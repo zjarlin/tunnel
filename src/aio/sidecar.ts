@@ -8,7 +8,10 @@ import {required} from '../server/settings.js';
 
 const host = JSON.parse(readFileSync(required('AIO_PLUGIN_CONFIG'), 'utf8'));
 const socket = required('AIO_PLUGIN_SOCKET');
-const database = host.database_url ? new pg.Pool({connectionString: host.database_url, max: 1}) : undefined;
+// 宿主数据库代理是受目录权限保护的 Unix socket，不接受 TLS 握手。
+const databaseUrl = host.database_url ? new URL(host.database_url) : undefined;
+if (databaseUrl?.searchParams.get('host')?.startsWith('/')) { databaseUrl.searchParams.set('sslmode', 'disable'); }
+const database = databaseUrl ? new pg.Pool({connectionString: databaseUrl.toString(), max: 1, connectionTimeoutMillis: 5000}) : undefined;
 
 function open(value: string): string {
   const data = Buffer.from(value, 'base64');
