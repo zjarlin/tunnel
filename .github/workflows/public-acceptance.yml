@@ -10,6 +10,10 @@ on:
         description: Expected application text
         required: true
         type: string
+      diagnostic_ports:
+        description: Optional comma-separated TCP ports on the same host
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
@@ -17,6 +21,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Report public DNS and TCP reachability
+        env:
+          ACCEPTANCE_URL: ${{ inputs.url }}
+          DIAGNOSTIC_PORTS: ${{ inputs.diagnostic_ports }}
+        run: |
+          python3 -u - <<'PY'
+          import concurrent.futures, os, socket, urllib.parse, urllib.request
+          target = urllib.parse.urlsplit(os.environ['ACCEPTANCE_URL'])
+          assert target.scheme == 'https' and target.hostname, 'HTTPS URL required'
+          ports = {target.port or 443}
+          ports.update(int(value.strip()) for value in os.environ['DIAGNOSTIC_PORTS'].split(',') if value.strip())
+          assert len(ports) <= 6 and all(0 < port <= 65535 for port in ports), 'Invalid diagnostic ports'
+          try:
+              with urllib.request.urlopen('https://api.ipify.org', timeout=5) as response:
+                  print('Runner public IPv4:', response.read(64).decode())
+          except OSError as error:
+              print('Runner address lookup failed:', error)
+          print('Target DNS:', sorted({entry[4][0] for entry in socket.getaddrinfo(target.hostname, None)}))
+          def probe(port):
+              try:
+                  with socket.create_connection((target.hostname, port), timeout=5) as connection:
+                      return f'TCP {port}: connected to {connection.getpeername()}'
+              except OSError as error:
+                  return f'TCP {port}: {error}'
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+              for result in executor.map(probe, sorted(ports)):
+                  print(result)
+          PY
       - name: Verify certificate and application from the public Internet
         env:
           ACCEPTANCE_URL: ${{ inputs.url }}
