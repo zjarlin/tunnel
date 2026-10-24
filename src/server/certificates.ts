@@ -12,6 +12,8 @@ export type Certificate = {certificate: string; key: string; tags: string[]};
 
 export function certificates(root: string) {
   const directory = `${root}/certificates`;
+  let client: Client | undefined;
+  let agent: Agent | undefined;
   mkdirSync(directory, {recursive: true, mode: 0o700});
   const filename = (domain: string) => `${directory}/${domain}.json`;
   function read(domain: string): Certificate | undefined {
@@ -28,13 +30,14 @@ export function certificates(root: string) {
       if (existing && Date.parse(new X509Certificate(existing.certificate).validTo) - Date.now() > 30 * 86400_000) { return existing; }
       const keyFile = `${directory}/account.pem`;
       if (!existsSync(keyFile)) { writeFileSync(keyFile, await acmeCrypto.createPrivateKey(), {mode: 0o600}); }
-      const client = new Client({directoryUrl: required('TUNNEL_ACME_DIRECTORY'), accountKey: readFileSync(keyFile), backoffAttempts: 12, backoffMin: 2000, backoffMax: 10_000});
+      client ??= new Client({directoryUrl: required('TUNNEL_ACME_DIRECTORY'), accountKey: readFileSync(keyFile), backoffAttempts: 12, backoffMin: 2000, backoffMax: 10_000});
       axios.defaults.timeout = 45_000;
       // ACME 使用固定目录中的绝对端点，直接传输并拒绝重定向。
       axios.defaults.maxRedirects = 0;
       const family = Number(required('TUNNEL_ACME_IP_FAMILY'));
       if (![0, 4, 6].includes(family)) { throw new Error('ACME IP family 必须为 0、4 或 6'); }
-      axios.defaults.httpsAgent = new Agent({family, keepAlive: true});
+      agent ??= new Agent({family, keepAlive: true});
+      axios.defaults.httpsAgent = agent;
       const [key, csr] = await acmeCrypto.createCsr({commonName: domain});
       let cleanup: (() => Promise<void>) | undefined;
       let phase = 'ACME 连接';
