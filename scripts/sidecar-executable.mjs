@@ -1,4 +1,4 @@
-import {readFileSync,writeFileSync,mkdtempSync,rmSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdtempSync,rmSync,chmodSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -27,6 +27,7 @@ int main(void) {
 `;
     const path=join(directory,'sidecar.c');writeFileSync(path,source);
     execFileSync('gcc',['-Os','-s','-Wl,-z,relro,-z,now',path,'-o',resolve('dist/aio-sidecar')]);
+    chmodSync('dist/aio-sidecar',0o755);
     return 'dist/aio-sidecar';
   } finally { rmSync(directory,{recursive:true,force:true}); }
 }
