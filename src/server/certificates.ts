@@ -29,7 +29,9 @@ export function certificates(root: string) {
       const keyFile = `${directory}/account.pem`;
       if (!existsSync(keyFile)) { writeFileSync(keyFile, await acmeCrypto.createPrivateKey(), {mode: 0o600}); }
       const client = new Client({directoryUrl: required('TUNNEL_ACME_DIRECTORY'), accountKey: readFileSync(keyFile), backoffAttempts: 12, backoffMin: 2000, backoffMax: 10_000});
-      axios.defaults.timeout = 30_000;
+      axios.defaults.timeout = 45_000;
+      // ACME 使用固定目录中的绝对端点，直接传输并拒绝重定向。
+      axios.defaults.maxRedirects = 0;
       const family = Number(required('TUNNEL_ACME_IP_FAMILY'));
       if (![0, 4, 6].includes(family)) { throw new Error('ACME IP family 必须为 0、4 或 6'); }
       axios.defaults.httpsAgent = new Agent({family, keepAlive: true});
