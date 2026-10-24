@@ -1,0 +1,35 @@
+name: Public HTTPS acceptance
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: HTTPS service URL
+        required: true
+        type: string
+      expected:
+        description: Expected application text
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify certificate and application from the public Internet
+        env:
+          ACCEPTANCE_URL: ${{ inputs.url }}
+          EXPECTED_TEXT: ${{ inputs.expected }}
+        run: |
+          curl --silent --show-error --fail --proto '=https' \
+            --connect-timeout 15 --max-time 45 --retry 1 --retry-delay 3 --retry-all-errors \
+            --output acceptance.html \
+            --write-out 'HTTP=%{http_code} remote=%{remote_ip} TLS=%{ssl_verify_result}\n' \
+            "$ACCEPTANCE_URL"
+          python3 - <<'PY'
+          import os, pathlib
+          page = pathlib.Path('acceptance.html').read_text()
+          assert os.environ['EXPECTED_TEXT'] in page, 'Unexpected application response'
+          print('Application identity verified')
+          PY
