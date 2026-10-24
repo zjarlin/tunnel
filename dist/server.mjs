@@ -526,12 +526,15 @@ function render(settings2) {
 
 // src/server/caddy.ts
 import { request, Agent } from "node:http";
-function caddyRequest(endpoint, path, method = "GET", body2, agent) {
+function caddyRequest(endpoint, path, method = "GET", body2, agent, metadata, headers = {}) {
   return new Promise((resolve3, reject) => {
     const payload = body2 === void 0 ? void 0 : JSON.stringify(body2);
     const connection = endpoint.startsWith("http:") ? { hostname: new URL(endpoint).hostname, port: new URL(endpoint).port, agent } : { socketPath: endpoint };
-    const req = request({ ...connection, path, method, headers: payload ? { "content-type": "application/json", "content-length": Buffer.byteLength(payload) } : {} }, (response) => {
+    const req = request({ ...connection, path, method, headers: { ...headers, ...payload ? { "content-type": "application/json", "content-length": Buffer.byteLength(payload) } : {} } }, (response) => {
       let text = "";
+      if (metadata) {
+        metadata.etag = response.headers.etag;
+      }
       response.setEncoding("utf8");
       response.on("data", (chunk) => {
         text += chunk;
@@ -568,56 +571,57 @@ function routes(settings2, aliases) {
 }
 async function publish(settings2, aliases, endpoint) {
   const id = "tunnel-services";
-  let failure;
+  const consoleHost = new URL(process.env.TUNNEL_PUBLIC_URL ?? "http://localhost").hostname;
+  const listener = process.env.TUNNEL_CADDY_LISTENER;
   for (let attempt = 0; attempt < 12; attempt += 1) {
     const agent = new Agent({ keepAlive: true, maxSockets: 1 });
     try {
-      const config2 = await caddyRequest(endpoint, "/config/", "GET", void 0, agent);
-      const consoleHost = new URL(process.env.TUNNEL_PUBLIC_URL ?? "http://localhost").hostname;
-      const servers = config2.apps?.http?.servers ?? {};
-      const server2 = Object.entries(servers).find(([, value]) => JSON.stringify(value.routes).includes(`"${consoleHost}"`));
+      const metadata = {};
+      const config2 = await caddyRequest(endpoint, "/config/", "GET", void 0, agent, metadata);
+      const server2 = Object.values(config2.apps.http.servers).find((value) => (!listener || value.listen?.includes(listener)) && JSON.stringify(value.routes).includes(`"${consoleHost}"`));
       if (!server2) {
-        throw new Error("Caddy console route is not installed on this instance");
+        continue;
       }
-      const [name, current] = server2;
       const managed = { match: [{ host: aliases.map((item) => `${item.alias}.${settings2.suffix}`) }], handle: [{ "@id": id, handler: "subroute", routes: routes(settings2, aliases) }] };
-      const existing = (current.routes ?? []).findIndex((route) => JSON.stringify(route).includes(`"@id":"${id}"`));
-      if (existing >= 0 && JSON.stringify(current.routes?.[existing]) === JSON.stringify(managed)) {
+      const existing = (server2.routes ?? []).findIndex((route) => JSON.stringify(route).includes(`"@id":"${id}"`));
+      if (existing >= 0 && JSON.stringify(server2.routes?.[existing]) === JSON.stringify(managed)) {
         return;
       }
       if (existing < 0 && !aliases.length) {
         return;
       }
-      const configured = config2;
-      const policies = configured.apps.tls?.automation?.policies ?? [];
+      const other = (server2.routes ?? []).filter((_, index) => index !== existing);
+      for (const alias of aliases) {
+        const domain = `${alias.alias}.${settings2.suffix}`;
+        if (JSON.stringify(other).includes(`"${domain}"`)) {
+          throw new Error(`Caddy already manages ${domain} outside Tunnel`);
+        }
+      }
+      server2.routes = aliases.length ? [managed, ...other] : other;
+      config2.apps.tls ??= {};
+      config2.apps.tls.automation ??= {};
       const issuerId = "tunnel-internal-certificates";
-      const issuerIndex = policies.findIndex((policy) => policy["@id"] === issuerId);
+      const policies = (config2.apps.tls.automation.policies ?? []).filter((policy) => policy["@id"] !== issuerId);
       const internal = aliases.filter((item) => item.visibility !== "public").map((item) => `${item.alias}.${settings2.suffix}`);
       if (internal.length) {
-        const policy = { "@id": issuerId, subjects: internal, issuers: [{ module: "internal" }] };
-        if (issuerIndex >= 0) {
-          await caddyRequest(endpoint, `/config/apps/tls/automation/policies/${issuerIndex}`, "PATCH", policy, agent);
-        } else {
-          await caddyRequest(endpoint, "/config/apps/tls/automation/policies", "POST", policy, agent);
-        }
-      } else if (issuerIndex >= 0) {
-        await caddyRequest(endpoint, `/config/apps/tls/automation/policies/${issuerIndex}`, "DELETE", void 0, agent);
+        policies.unshift({ "@id": issuerId, subjects: internal, issuers: [{ module: "internal" }] });
       }
-      if (existing >= 0 && !aliases.length) {
-        await caddyRequest(endpoint, `/config/apps/http/servers/${name}/routes/${existing}`, "DELETE", void 0, agent);
-      } else if (existing >= 0) {
-        await caddyRequest(endpoint, `/config/apps/http/servers/${name}/routes/${existing}`, "PATCH", managed, agent);
-      } else if (aliases.length) {
-        await caddyRequest(endpoint, `/config/apps/http/servers/${name}/routes/0`, "PUT", managed, agent);
+      config2.apps.tls.automation.policies = policies;
+      if (!metadata.etag) {
+        throw new Error("Caddy did not return an ETag; refusing an unguarded config update");
       }
+      await caddyRequest(endpoint, "/config/", "POST", config2, agent, void 0, { "if-match": metadata.etag });
       return;
     } catch (error) {
-      failure = error;
+      if (error instanceof Error && error.message.startsWith("Caddy HTTP 412")) {
+        continue;
+      }
+      throw error;
     } finally {
       agent.destroy();
     }
   }
-  throw failure;
+  throw new Error("Caddy console route/listener not found or config changed concurrently");
 }
 
 // src/server/services.ts

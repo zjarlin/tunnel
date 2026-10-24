@@ -34,6 +34,7 @@ docker compose up -d
 | `TUNNEL_LAN_IP` / `TUNNEL_ALLOWED_CIDRS` | 内网入口地址与允许访问的 LAN / EasyTier CIDR，逗号分隔 |
 | `TUNNEL_ADMIN_USER` / `TUNNEL_ADMIN_PASSWORD` | 控制台账号密码 |
 | `TUNNEL_API_TOKEN` | sidecar 或自动化调用使用的服务端凭据 |
+| `TUNNEL_CADDY_LISTENER` | Caddy HTTPS 监听地址，用于存在多个实例时精确选择服务 |
 | `TUNNEL_CADDY_ADMIN` | 现役 Caddy 本机管理端点，必须已有控制台域名路由 |
 | `TUNNEL_CF_ZONE` / `TUNNEL_CF_TOKEN` | Cloudflare zone 与 DNS 编辑 token；不配置时可管理内网服务，公网发布会阻断 |
 

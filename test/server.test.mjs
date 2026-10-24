@@ -21,7 +21,8 @@ test('standalone authentication, internal publishing, restart persistence and bl
   const port = probe.address().port; await new Promise(resolve => probe.close(resolve));
   let changes = [];
   const caddy = createServer(async (req, res) => {
-    if (req.method === 'PATCH' || req.method === 'PUT') { let body = ''; for await (const chunk of req) { body += chunk; } changes.push(JSON.parse(body)); }
+    if (req.method === 'POST') { let body = ''; for await (const chunk of req) { body += chunk; } changes.push(JSON.parse(body)); }
+    res.setHeader('etag', '"/config/ test"');
     res.end(JSON.stringify({apps: {http: {servers: {test: {routes: [{match: [{host: ['127.0.0.1']}]}]}}}, tls: {automation: {policies: []}}}}));
   });
   caddy.listen(0, '127.0.0.1'); await once(caddy, 'listening');
@@ -44,8 +45,8 @@ test('standalone authentication, internal publishing, restart persistence and bl
   assert.equal((await api('/api/services', 'PUT', item, auth)).status, 200);
   assert.equal((await api('/api/apply', 'POST', {}, auth)).status, 200);
   assert.equal(changes.length, 1);
-  assert.equal(changes[0].handle[0].routes[0].handle[0].routes[0].match[0].remote_ip.ranges[0], '127.0.0.1/32');
-  assert.equal(changes[0].handle[0].routes[0].handle[0].routes[1].handle[0].status_code, 404);
+  assert.equal(changes[0].apps.http.servers.test.routes[0].handle[0].routes[0].handle[0].routes[0].match[0].remote_ip.ranges[0], '127.0.0.1/32');
+  assert.equal(changes[0].apps.http.servers.test.routes[0].handle[0].routes[0].handle[0].routes[1].handle[0].status_code, 404);
   await api('/api/services', 'PUT', {...item, alias: 'public', visibility: 'public'}, auth);
   assert.equal((await api('/api/apply', 'POST', {}, auth)).status, 400);
   assert.equal(changes.length, 1, 'blocked DNS must not publish Caddy changes');
