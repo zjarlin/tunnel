@@ -4,7 +4,7 @@ import tencent from 'tencentcloud-sdk-nodejs-dnspod';
 import type {DnsAccount} from './accounts.js';
 
 type RecordSet = {id: string; type: string; value: string; owner?: string};
-type Driver = {list(name: string): Promise<RecordSet[]>; write(name: string, value: string, owner: string, old?: RecordSet): Promise<void>; remove(record: RecordSet): Promise<void>};
+type Driver = {list(name: string): Promise<RecordSet[]>; write(name: string, value: string, owner: string, old?: RecordSet, type?: 'CNAME' | 'TXT'): Promise<void>; remove(record: RecordSet): Promise<void>};
 
 /** 使用厂商 SDK 签名，不把 AK/SK 拼进 URL 或日志。 */
 async function driver(account: DnsAccount): Promise<Driver> {
@@ -18,11 +18,12 @@ async function driver(account: DnsAccount): Promise<Driver> {
         const response = await client.listRecordSetsByZone(new ListRecordSetsByZoneRequest(zone).withName(`${name}.`).withSearchMode('equal').withLimit(500));
         return (response.recordsets ?? []).filter(item => item.name === `${name}.`).map(item => ({id: item.id!, type: item.type!, value: item.records?.[0]?.replace(/\.$/, '') ?? '', owner: item.description}));
       },
-      async write(name, value, owner, old) {
+      async write(name, value, owner, old, type = 'CNAME') {
+        const record = type === 'TXT' ? JSON.stringify(value) : `${value}.`;
         if (old) {
-          await client.updateRecordSet(new UpdateRecordSetRequest(zone, old.id).withBody(new UpdateRecordSetReq().withName(`${name}.`).withType('CNAME').withRecords([`${value}.`]).withTtl(300).withDescription(owner)));
+          await client.updateRecordSet(new UpdateRecordSetRequest(zone, old.id).withBody(new UpdateRecordSetReq().withName(`${name}.`).withType(type).withRecords([record]).withTtl(300).withDescription(owner)));
         } else {
-          await client.createRecordSet(new CreateRecordSetRequest(zone).withBody(new CreateRecordSetRequestBody(`${name}.`, 'CNAME', [`${value}.`]).withTtl(300).withDescription(owner)));
+          await client.createRecordSet(new CreateRecordSetRequest(zone).withBody(new CreateRecordSetRequestBody(`${name}.`, type, [record]).withTtl(300).withDescription(owner)));
         }
       },
       async remove(record) { await client.deleteRecordSet(new DeleteRecordSetRequest(zone, record.id)); },
@@ -41,8 +42,8 @@ async function driver(account: DnsAccount): Promise<Driver> {
           throw error;
         }
       },
-      async write(name, value, owner, old) {
-        const fields = {Domain: account.domain, SubDomain: name.slice(0, -(account.domain.length + 1)), RecordType: 'CNAME', RecordLine: '默认', Value: value, TTL: 600};
+      async write(name, value, owner, old, type = 'CNAME') {
+        const fields = {Domain: account.domain, SubDomain: name.slice(0, -(account.domain.length + 1)), RecordType: type, RecordLine: '默认', Value: value, TTL: 600};
         const recordId = old ? Number(old.id) : (await client.CreateRecord(fields)).RecordId;
         if (!recordId) { throw new Error('DNSPod 未返回记录 ID'); }
         if (old) { await client.ModifyRecord({...fields, RecordId: recordId}); }
@@ -62,8 +63,26 @@ async function driver(account: DnsAccount): Promise<Driver> {
   const base = `zones/${zone}/dns_records`;
   return {
     async list(name) { return (await call(`${base}?name=${encodeURIComponent(name)}`)).map((item: any) => ({id: item.id, type: item.type, value: item.content, owner: item.comment})); },
-    async write(name, value, owner, old) { await call(old ? `${base}/${old.id}` : base, old ? 'PATCH' : 'POST', {type: 'CNAME', name, content: value, ttl: 300, proxied: false, comment: owner}); },
+    async write(name, value, owner, old, type = 'CNAME') { await call(old ? `${base}/${old.id}` : base, old ? 'PATCH' : 'POST', {type, name, content: value, ttl: 300, proxied: false, comment: owner}); },
     async remove(record) { await call(`${base}/${record.id}`, 'DELETE'); },
+  };
+}
+
+/** 只管理本系统的临时 TXT，不覆盖其他证书工具的验证记录。 */
+export async function dnsChallenge(account: DnsAccount, domain: string, value: string): Promise<() => Promise<void>> {
+  if (!domain.endsWith(`.${account.domain}`)) { throw new Error('证书域名不属于所选账号'); }
+  const name = `_acme-challenge.${domain}`;
+  const owner = `tunnel-acme:${domain}`;
+  const client = await driver(account);
+  const existing = await client.list(name);
+  if (existing.some(item => item.owner !== owner || item.type !== 'TXT') || existing.length > 1) {
+    throw new Error(`${name} 已被其他证书工具使用`);
+  }
+  await client.write(name, value, owner, existing[0], 'TXT');
+  return async () => {
+    for (const record of await client.list(name)) {
+      if (record.owner === owner && record.type === 'TXT' && record.value.replace(/^"|"$/g, '') === value) { await client.remove(record); }
+    }
   };
 }
 

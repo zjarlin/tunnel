@@ -1,10 +1,11 @@
 import {request, Agent} from 'node:http';
 import type {Alias, PortalSettings} from '../config/index.js';
+import type {Certificate} from './certificates.js';
 
 type CaddyConfig = {
   apps: {
     http: {servers: Record<string, {listen?: string[]; routes?: Array<Record<string, unknown>>}>};
-    tls?: {automation?: {policies?: Array<Record<string, unknown>>}};
+    tls?: {automation?: {policies?: Array<Record<string, unknown>>}; certificates?: {load_pem?: Certificate[]}};
   };
 };
 
@@ -44,7 +45,7 @@ export function routes(settings: PortalSettings, aliases: Alias[]): unknown[] {
   });
 }
 
-export async function publish(settings: PortalSettings, aliases: Alias[], endpoint: string): Promise<void> {
+export async function publish(settings: PortalSettings, aliases: Alias[], endpoint: string, certificates: Certificate[] = []): Promise<void> {
   const consoleHost = new URL(process.env.TUNNEL_PUBLIC_URL ?? 'http://localhost').hostname;
   const listener = process.env.TUNNEL_CADDY_LISTENER;
   const expected = Number(process.env.TUNNEL_CADDY_INSTANCES || 1);
@@ -80,6 +81,11 @@ export async function publish(settings: PortalSettings, aliases: Alias[], endpoi
         changed ||= original !== JSON.stringify(server.routes);
       }
       config.apps.tls ??= {};
+      config.apps.tls.certificates ??= {};
+      const loaded = config.apps.tls.certificates.load_pem ?? [];
+      const next = [...loaded.filter(cert => !cert.tags?.some(tag => tag.startsWith('tunnel-service:'))), ...certificates];
+      changed ||= JSON.stringify(loaded) !== JSON.stringify(next);
+      config.apps.tls.certificates.load_pem = next;
       config.apps.tls.automation ??= {};
       const issuerId = 'tunnel-internal-certificates';
       const managedDomains = new Set(aliases.map(item => serviceDomain(settings, item)));
@@ -87,7 +93,8 @@ export async function publish(settings: PortalSettings, aliases: Alias[], endpoi
         .filter(policy => policy['@id'] !== issuerId)
         .map(policy => Array.isArray(policy.subjects) ? {...policy, subjects: policy.subjects.filter(subject => !managedDomains.has(String(subject)))} : policy)
         .filter(policy => !Array.isArray(policy.subjects) || policy.subjects.length > 0);
-      const internal = aliases.filter(item => item.visibility !== 'public').map(item => serviceDomain(settings, item));
+      const secured = new Set(certificates.flatMap(cert => cert.tags.map(tag => tag.replace(/^tunnel-service:/, ''))));
+      const internal = aliases.filter(item => item.visibility !== 'public').map(item => serviceDomain(settings, item)).filter(domain => !secured.has(domain));
       if (internal.length) { policies.unshift({'@id': issuerId, subjects: internal, issuers: [{module: 'internal'}]}); }
       changed ||= JSON.stringify(config.apps.tls.automation.policies) !== JSON.stringify(policies);
       config.apps.tls.automation.policies = policies;

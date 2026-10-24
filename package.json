@@ -44,6 +44,7 @@
   "dependencies": {
     "@huaweicloud/huaweicloud-sdk-core": "^3.1.219",
     "@huaweicloud/huaweicloud-sdk-dns": "^3.1.219",
+    "acme-client": "^5.4.0",
     "pg": "^8.23.1",
     "tencentcloud-sdk-nodejs-dnspod": "^4.1.266"
   }

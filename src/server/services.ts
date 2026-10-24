@@ -6,6 +6,7 @@ import {publish, serviceDomain} from './caddy.js';
 import {deviceDirectory, probe, validHost} from './devices.js';
 import {accounts} from './accounts.js';
 import {dnsPlan} from './cloud-dns.js';
+import {certificates} from './certificates.js';
 
 export function validate(value: Record<string, unknown>): Alias {
   const {alias, port, scheme, visibility, note} = value;
@@ -28,6 +29,8 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
   const root = settings.portal.root;
   const devices = deviceDirectory(root);
   const credentials = accounts(root);
+  const tls = certificates(root);
+  let nextRenewal = 0;
   const publishedFile = `${root}/published.json`;
   const statusFile = `${root}/last-apply.json`;
   const previous = (): Alias[] => existsSync(publishedFile) ? JSON.parse(readFileSync(publishedFile, 'utf8')) : [];
@@ -61,7 +64,14 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
         const ids = new Set((await devices.list()).map(device => device.id));
         // 撤销配对后撤掉路由；网络暂时离线不销毁登记。
         const aliases = previous().filter(item => !item.deviceId || ids.has(item.deviceId));
-        await publish(settings, aliases, socket);
+        await publish(settings, aliases, socket, tls.list(aliases.map(item => serviceDomain(settings, item))));
+        if (Date.now() >= nextRenewal) {
+          nextRenewal = Date.now() + 12 * 3600_000;
+          for (const item of aliases) {
+            if (item.accountId && process.env.TUNNEL_ACME_DIRECTORY) { await tls.ensure(credentials.get(item.accountId), serviceDomain(settings, item)); }
+          }
+        }
+        await publish(settings, aliases, socket, tls.list(aliases.map(item => serviceDomain(settings, item))));
       } finally { active = false; }
     },
     async apply() {
@@ -69,7 +79,7 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
       const steps: Array<{step: string; state: string; detail?: string}> = [];
       function record(step: string, state: string, detail?: string) {
         steps.push({step, state, ...(detail ? {detail} : {})});
-        writeFileSync(statusFile, JSON.stringify({at: Date.now(), state, steps}), {mode: 0o600});
+        writeFileSync(statusFile, JSON.stringify({at: Date.now(), state: state === 'failed' ? 'failed' : 'running', steps}), {mode: 0o600});
       }
       try {
         record('准备发布', 'running');
@@ -95,11 +105,20 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
         }
         record('DNS 预检', 'success');
         // 先收紧代理策略，再进行 DNS 变更，公网转内网时立即拒绝外部请求。
-        await publish(settings, aliases, socket);
+        const domains = aliases.map(item => serviceDomain(settings, item));
+        await publish(settings, aliases, socket, tls.list(domains));
         writeFileSync(publishedFile, JSON.stringify(aliases), {mode: 0o600});
         record('Caddy 路由与访问范围', 'success');
         for (const plan of plans) { await plan(); }
         record('云 DNS 写入与读回', 'success');
+        if (process.env.TUNNEL_ACME_DIRECTORY) {
+          record('HTTPS 证书签发', 'running');
+          for (const item of aliases) {
+            if (item.accountId) { await tls.ensure(credentials.get(item.accountId), serviceDomain(settings, item)); }
+          }
+          await publish(settings, aliases, socket, tls.list(domains));
+          record('HTTPS 证书安装', 'success');
+        }
         mkdirSync(`${root}/dns`, {recursive: true});
         const hosts = aliases.map(item => `${settings.lanIp} ${serviceDomain(settings, item)}`).join('\n');
         writeFileSync(`${root}/dns/tunnel.hosts`, `${hosts}\n`, {mode: 0o644});

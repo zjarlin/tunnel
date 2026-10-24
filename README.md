@@ -45,9 +45,9 @@ docker compose up -d
 ## 服务管理
 
 - 「保存并应用」保存表格后立即发布；逐步显示设备端口、DNS 预检、Caddy 和云记录读回状态。全部 DNS 计划通过后才更新 Caddy。
-- `internal` 不创建公网 DNS，Caddy 使用直接连接的来源 IP 白名单，其他来源返回 404。证书使用 Caddy 内部 CA，客户端须信任该 CA。
-- `public` 创建 DNS-only CNAME 指向 `TUNNEL_RAW_HOST`。Caddy 负责后续 ACME，**DNS 写入成功不等于证书已经签发或公网已可达**。
-- 内网 DNS 片段写入 `data/dns/tunnel.conf`，需要主机解析器加载。应用不会擅自修改路由器 DHCP 或 DNS。
+- `internal` 不创建公网地址记录，Caddy 使用直接连接的来源 IP 白名单，其他来源返回 404。选有云账号且配置 ACME 时自动申请 DNS 验证证书，否则使用 Caddy 内部 CA。
+- `public` 创建 DNS-only CNAME 指向 `TUNNEL_RAW_HOST`。云账号配合 ACME 配置自动签发、安装并续期 HTTPS 证书；未配置时使用 Caddy 默认 ACME。公网端口可达性仍需单独验收。
+- 内网 DNS 记录写入 `data/dns/tunnel.hosts`，需要主机解析器加载，见 AIO.md。应用不会擅自修改路由器 DHCP 或 DNS。
 - Caddy 只修改 `tunnel-services-*` 与 `tunnel-internal-certificates` 命名资源，保留其他服务；Caddy 热加载后最多 30 秒恢复上次成功发布的数据，草稿不会自动发布。
 - 配置 DNS 账号的服务在删除或公网转内网时移除本系统管理的 DNS 记录；遇到其他系统的记录会阻止发布。旧版默认 Cloudflare 配置需人工确认旧记录归属。
 - 选择 AIO 已配对设备并绑定 EasyTier 地址，支持设备本机服务和通过已有子网路由可达的服务；复用现役 EasyTier，不安装第二套网络或配对协议。
