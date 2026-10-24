@@ -66,6 +66,7 @@ const server = createServer(async (request, response) => {
     if (method === 'GET' && path === '/api/publications') { send(200, services.status()); return; }
     if (method === 'POST' && path === '/api/publications') {
       await data();
+      services.assertIdle();
       services.apply().catch(() => { /* 失败详情持久化在发布状态中，由界面读取。 */ });
       send(202, {state: 'running'}); return;
     }

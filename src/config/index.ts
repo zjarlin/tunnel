@@ -101,6 +101,7 @@ export type Alias = {
   domain?: string;
   deviceId?: string;
   accountId?: string;
+  dnsMode?: 'managed' | 'existing';
   host: string;
   port: number;
   scheme: 'http' | 'https';

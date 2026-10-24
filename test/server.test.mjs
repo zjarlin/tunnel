@@ -42,6 +42,9 @@ test('standalone authentication, internal publishing, restart persistence and bl
   assert.equal((await api('/api/services', 'PUT', {}, {...auth, origin: 'https://evil.test'})).status, 403);
   const item = {alias: 'git', host: '127.0.0.1', port: 8080, scheme: 'http', visibility: 'internal', note: 'test'};
   assert.equal((await api('/api/services', 'PUT', {...item, alias: '../escape'}, auth)).status, 400);
+  assert.equal((await api('/api/services', 'PUT', {...item, dnsMode:'existing', accountId:'external'}, auth)).status, 400);
+  assert.equal((await api('/api/services', 'PUT', {...item, visibility:'public', dnsMode:'existing'}, auth)).status, 400);
+  assert.equal((await api('/api/services', 'PUT', {...item, dnsMode:'invalid'}, auth)).status, 400);
   assert.equal((await api('/api/services', 'PUT', item, auth)).status, 200);
   assert.equal((await api('/api/apply', 'POST', {}, auth)).status, 200);
   assert.equal(changes.length, 1);

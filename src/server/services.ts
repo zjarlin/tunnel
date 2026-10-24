@@ -14,14 +14,17 @@ export function validate(value: Record<string, unknown>): Alias {
   const deviceId = String(value.deviceId || '');
   const accountId = String(value.accountId || '');
   const domain = String(value.domain || '');
+  const dnsMode = value.dnsMode ?? 'managed';
   if (typeof alias !== 'string' || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(alias)) { throw new Error('域名别名无效'); }
   if ((!deviceId || host) && !validHost(host)) { throw new Error('目标主机无效'); }
   if (domain && !/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/.test(domain)) { throw new Error('域名后缀无效'); }
   if (!Number.isInteger(port) || Number(port) < 1 || Number(port) > 65535) { throw new Error('端口必须在 1～65535 之间'); }
   if (scheme !== 'http' && scheme !== 'https') { throw new Error('协议无效'); }
   if (visibility !== 'internal' && visibility !== 'public') { throw new Error('访问范围无效'); }
+  if (dnsMode !== 'managed' && dnsMode !== 'existing') { throw new Error('DNS 方式无效'); }
+  if (dnsMode === 'existing' && (visibility !== 'public' || !accountId)) { throw new Error('保留现有 DNS 需要选择公网访问与 DNS 账号'); }
   if (typeof note !== 'string' || note.length > 300) { throw new Error('备注长度超过限制'); }
-  return {alias, host, port: Number(port), scheme, visibility, note, ...(domain ? {domain} : {}), ...(deviceId ? {deviceId} : {}), ...(accountId ? {accountId} : {}), authorizedBy: visibility === 'public' ? 'console-admin' : undefined};
+  return {alias, host, port: Number(port), scheme, visibility, dnsMode, note, ...(domain ? {domain} : {}), ...(deviceId ? {deviceId} : {}), ...(accountId ? {accountId} : {}), authorizedBy: visibility === 'public' ? 'console-admin' : undefined};
 }
 
 export function serviceRegistry(settings: PortalSettings, socket: string) {
@@ -43,16 +46,17 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
     return {...item, host: item.host || address};
   }
   return {
-    devices, accounts: credentials,
+    devices, accounts: credentials, assertIdle,
     status: () => existsSync(statusFile) ? JSON.parse(readFileSync(statusFile, 'utf8')) : null,
     list: () => readAliases(settings),
     save: (value: Record<string, unknown>) => {
       assertIdle();
-      const entry = validate(value);
+      const old = readAliases(settings).find(item => item.alias === value.alias);
+      const entry = validate({...value, dnsMode: value.dnsMode ?? old?.dnsMode});
       const name = serviceDomain(settings, entry);
       if ([new URL(process.env.TUNNEL_PUBLIC_URL ?? 'http://localhost').hostname, process.env.TUNNEL_RAW_HOST].includes(name)) { throw new Error('控制台与灰云入口不能被服务覆盖'); }
       if (entry.accountId && credentials.get(entry.accountId).domain !== (entry.domain || settings.suffix)) { throw new Error('域名后缀与 DNS 账号不匹配'); }
-      const old = readAliases(settings).find(item => item.alias === entry.alias);
+      if (old?.dnsMode === 'existing' && entry.visibility !== 'public') { throw new Error('请先关闭原公网入口，再删除此登记并按仅内网重新添加'); }
       if (old && (old.domain !== entry.domain || old.accountId !== entry.accountId)) { throw new Error('迁移域名或 DNS 账号前请先删除旧服务并应用'); }
       return upsert(settings, entry);
     },
@@ -88,9 +92,9 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
         record('设备与目标端口', 'success');
         const removed = previous().filter(old => !aliases.some(item => item.alias === old.alias));
         const plans: Array<() => Promise<void>> = [];
-        for (const item of [...aliases, ...removed.map(item => ({...item, visibility: 'internal' as const}))]) {
+        for (const item of [...aliases, ...removed.filter(item => item.dnsMode !== 'existing').map(item => ({...item, visibility: 'internal' as const}))]) {
           if (item.accountId) {
-            const plan = await dnsPlan(credentials.get(item.accountId), serviceDomain(settings, item), item.visibility!);
+            const plan = await dnsPlan(credentials.get(item.accountId), serviceDomain(settings, item), item.visibility!, item.dnsMode);
             plans.push(() => plan.apply());
           } else if (item.visibility === 'public') {
             if (item.domain && item.domain !== settings.suffix) { throw new Error('请选择该域名的 DNS 账号'); }
@@ -110,7 +114,7 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
         writeFileSync(publishedFile, JSON.stringify(aliases), {mode: 0o600});
         record('Caddy 路由与访问范围', 'success');
         for (const plan of plans) { await plan(); }
-        record('云 DNS 写入与读回', 'success');
+        record('云 DNS 校验与应用', 'success');
         if (process.env.TUNNEL_ACME_DIRECTORY) {
           record('HTTPS 证书签发', 'running');
           for (const item of aliases) {

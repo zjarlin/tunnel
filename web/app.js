@@ -2,6 +2,7 @@ const words = {
   subtitle:'服务入口管理', logout:'退出登录', welcome:'连接你的服务', account:'账号', password:'密码', login:'登录', services:'服务入口', apply:'应用配置', alias:'域名别名', target:'目标主机 / 子网地址', port:'端口', scheme:'协议', visibility:'访问范围', internal:'仅内网', public:'公网', note:'备注', save:'保存', domain:'域名', actions:'操作', empty:'还没有服务，点击「添加服务」开始。', edit:'编辑', remove:'删除', removeConfirm:'删除服务并撤下代理和本系统管理的 DNS？', applied:'配置已应用', failed:'请求失败', applying:'正在发布配置…', devices:'配对设备', device:'设备', accounts:'DNS 账号', dnsAccount:'DNS 账号', add:'添加服务', service:'服务配置', close:'关闭', suffix:'域名后缀', saveApply:'保存并应用', status:'配对状态', meshAddress:'EasyTier 地址 / 主机名', devicesEmpty:'当前账号还没有配对设备。请先在设备助手完成配对。', accountId:'账号标识', label:'名称', provider:'厂商', zone:'Zone ID（可留空自动查询）', rawHost:'灰云入口', direct:'入口直接可达的主机', defaultAccount:'默认账号 / 仅内网', online:'在线', offline:'离线', configured:'凭据已配置', saved:'已保存', success:'成功', running:'发布中', configuredHost:'设备本机', bindRequired:'未绑定地址', revoked:'设备已撤销或不可见', accountSaved:'DNS 账号已加密保存', pending:'等待发布',
 };
 const $ = id => document.getElementById(id);
+Object.assign(words, {dnsMode:'DNS 方式', managed:'自动管理 DNS', existing:'保留现有公网 DNS', removeExistingConfirm:'删除本地登记与代理？原公网入口和 DNS 会保留，需要在原入口单独关闭。'});
 document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = words[node.dataset.i18n]; });
 document.querySelectorAll('[data-close]').forEach(node => { node.onclick = () => $(node.dataset.close).close(); });
 const hosted = Boolean(window.aioPlugin);
@@ -33,14 +34,14 @@ async function refresh() {
   $('account-select').replaceChildren(option('', words.defaultAccount), ...accounts.map(item => option(item.id, `${item.label} · ${item.domain}`)));
   for (const item of registry.items) {
     const device = devices.find(entry => entry.id === item.deviceId);
-    const row = cells([`${item.alias}.${item.domain || domain}`, item.deviceId ? device?.label || words.revoked : words.direct, `${item.scheme}://${item.host || device?.address || words.configuredHost}:${item.port}`, words[item.visibility], item.note]);
+    const row = cells([`${item.alias}.${item.domain || domain}`, item.deviceId ? device?.label || words.revoked : words.direct, `${item.scheme}://${item.host || device?.address || words.configuredHost}:${item.port}`, words[item.visibility], words[item.dnsMode || 'managed'], item.note]);
     const actions = document.createElement('td'); actions.className = 'actions';
     actions.append(button(words.edit, () => {
       const form = $('service-form'); form.reset();
-      for (const key of ['alias','domain','deviceId','accountId','host','port','scheme','visibility','note']) { form.elements[key].value = item[key] ?? (key === 'domain' ? domain : ''); }
+      for (const key of ['alias','domain','deviceId','accountId','dnsMode','host','port','scheme','visibility','note']) { form.elements[key].value = item[key] ?? ({domain, dnsMode:'managed'}[key] || ''); }
       form.elements.alias.readOnly = true; $('service-dialog').showModal();
     }), button(words.remove, async () => {
-      if (!confirm(words.removeConfirm)) { return; }
+      if (!confirm(item.dnsMode === 'existing' ? words.removeExistingConfirm : words.removeConfirm)) { return; }
       try { await api(`/api/services/${encodeURIComponent(item.alias)}`, 'DELETE'); await refresh(); await publish(); } catch (error) { message(error.message, true); }
     })); row.append(actions); $('rows').append(row);
   }

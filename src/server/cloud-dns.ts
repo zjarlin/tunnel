@@ -3,7 +3,7 @@ import {DnsClient, ListPublicZonesRequest, ListRecordSetsByZoneRequest, CreateRe
 import tencent from 'tencentcloud-sdk-nodejs-dnspod';
 import type {DnsAccount} from './accounts.js';
 
-type RecordSet = {id: string; type: string; value: string; owner?: string};
+type RecordSet = {id: string; type: string; value: string; owner?: string; proxied?: boolean};
 type Driver = {list(name: string): Promise<RecordSet[]>; write(name: string, value: string, owner: string, old?: RecordSet, type?: 'CNAME' | 'TXT'): Promise<void>; remove(record: RecordSet): Promise<void>};
 
 /** 使用厂商 SDK 签名，不把 AK/SK 拼进 URL 或日志。 */
@@ -62,7 +62,7 @@ async function driver(account: DnsAccount): Promise<Driver> {
   if (!zone) { throw new Error('Cloudflare 未找到域名 Zone'); }
   const base = `zones/${zone}/dns_records`;
   return {
-    async list(name) { return (await call(`${base}?name=${encodeURIComponent(name)}`)).map((item: any) => ({id: item.id, type: item.type, value: item.content, owner: item.comment})); },
+    async list(name) { return (await call(`${base}?name=${encodeURIComponent(name)}`)).map((item: any) => ({id: item.id, type: item.type, value: item.content, owner: item.comment, proxied: item.proxied})); },
     async write(name, value, owner, old, type = 'CNAME') { await call(old ? `${base}/${old.id}` : base, old ? 'PATCH' : 'POST', {type, name, content: value, ttl: 300, proxied: false, comment: owner}); },
     async remove(record) { await call(`${base}/${record.id}`, 'DELETE'); },
   };
@@ -86,11 +86,21 @@ export async function dnsChallenge(account: DnsAccount, domain: string, value: s
   };
 }
 
-export async function dnsPlan(account: DnsAccount, name: string, visibility: string) {
+export async function dnsPlan(account: DnsAccount, name: string, visibility: string, mode: 'managed' | 'existing' = 'managed') {
   try {
     if (!name.endsWith(`.${account.domain}`) || name === account.rawHost) { throw new Error('域名不属于所选 DNS 账号，或占用灰云入口'); }
     const client = await driver(account);
     const records = (await client.list(name)).filter(item => ['A', 'AAAA', 'CNAME'].includes(item.type));
+    if (mode === 'existing') {
+      if (visibility !== 'public') { throw new Error('保留现有 DNS 仅适用于公网服务'); }
+      if (!records.length) { throw new Error(`${name} 没有可保留的公网 DNS 记录`); }
+      const snapshot = (items: RecordSet[]) => JSON.stringify(items.filter(item => ['A', 'AAAA', 'CNAME'].includes(item.type)).sort((a, b) => a.id.localeCompare(b.id)));
+      return {
+        async apply() {
+          if (snapshot(await client.list(name)) !== snapshot(records)) { throw new Error(`${name} 的现有 DNS 记录已变化，请重新应用`); }
+        },
+      };
+    }
     const owner = `tunnel:${name}`;
     if (records.some(item => item.owner !== owner)) { throw new Error(`${name} 已有其他系统管理的 DNS 记录，请先确认归属`); }
     const raw = visibility === 'public' ? await client.list(account.rawHost) : [];
