@@ -16,6 +16,8 @@ node --env-file="$TUNNEL_ENV_FILE" scripts/package-aio.mjs
 
 插件数据库的 `tunnel_connection` 只有一条部署连接：`endpoint`、使用宿主 `encryption_key` 的 AES-256-GCM 加密 `token`、允许的 `users` 数组。密文格式为 base64(iv[12] + tag[16] + ciphertext)。部署者写入该表；不向插件授予其他应用数据库权限。宿主先校验有效会话、租户和插件活动版本，sidecar 再校验 ingress token 与用户白名单，Tunnel 再校验服务令牌、租户和用户。
 
+`bootstrap_components` 仅负责首次安装；修改包路径或摘要不会升级已安装租户。后续升级使用有发布权限的账号上传整包，再在各租户安装目标 revision，并检查活动 revision。插件连接表属于租户 schema，升级保留数据。不能用重启宿主代替升级验收。
+
 ## 配对与地址
 
 在服务器上使用设备助手现有配对流程：
