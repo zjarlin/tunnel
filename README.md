@@ -8,6 +8,8 @@
 
 使用官方 Node 镜像，无 Dockerfile，不启动额外数据库或 Caddy。
 
+从 GitHub Release 下载 `tunnel.tar.gz` 后，直接解压到 `$HOME/DockerCompose/tunnel`，复制 `.env.example` 为 `.env` 并填写配置即可 `docker compose up -d`。从源码部署：
+
 ```sh
 npm ci
 npm test

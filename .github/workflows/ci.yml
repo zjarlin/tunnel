@@ -17,7 +17,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: tar -czf tunnel.tar.gz dist docker-compose.yml .env.example README.md
+      - run: |
+          mkdir -p release
+          cp -R dist release/dist
+          tar -czf tunnel.tar.gz release docker-compose.yml .env.example README.md AIO.md LICENSE
       - uses: actions/upload-artifact@v4
         with:
           name: tunnel
