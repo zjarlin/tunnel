@@ -34,4 +34,6 @@ aio device connect --server "$AIO_URL" --name "$DEVICE_NAME"
 
 配置 `TUNNEL_ACME_DIRECTORY`、`TUNNEL_ACME_EMAIL`、`TUNNEL_ACME_RESOLVERS` 后，选有云账号的服务自动进行 DNS-01 验证、安装受信任证书，每 12 小时检查一次，在到期前 30 天续期。内网服务只临时发布证书验证 TXT，不发布 A/AAAA/CNAME，访问范围仍由 Caddy 来源白名单限制。没有云账号的内网服务使用 Caddy 内部 CA，需要客户端信任。私钥只保存于服务数据目录，页面与 API 不返回私钥。
 
+`TUNNEL_ACME_IP_FAMILY` 控制 ACME 出站地址族（0 自动、4 IPv4、6 IPv6）；IPv6 不可达的主机使用 4，并复用 HTTPS 连接。
+
 验收应分别检查 AIO 菜单、配对归属、目标端口、云 DNS 读回、DNS 解析、HTTPS 业务响应和内网来源排除。端口可达与配置已应用不代表证书已经签发。
