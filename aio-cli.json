@@ -1,8 +1,11 @@
 {
-  "id": "aio-plugin-portal",
-  "title": "端口门户",
-  "command": "aio-plugin-portal",
-  "platforms": ["macos", "linux"],
+  "id": "tunnel",
+  "title": "Tunnel",
+  "command": "tunnel",
+  "platforms": [
+    "macos",
+    "linux"
+  ],
   "setup": [],
   "uninstall": []
 }

@@ -174,13 +174,28 @@ async function jsonRequest(url: string, init: RequestInit): Promise<Json> {
 /** Cloudflare：zone 参数是 Zone ID，凭据是 API Token。 */
 export class CloudflareDnsProvider extends CloudDnsProvider {
   readonly name = 'cloudflare';
+  private recordType = 'A';
+  private cnameSettings(settings: PortalSettings, alias: Alias): PortalSettings {
+    const target = cloudConfig(settings, alias).config?.cnameTarget;
+    this.recordType = target ? 'CNAME' : 'A';
+    return target ? {...settings, lanIp: target} : settings;
+  }
+  override async plan(alias: Alias, settings: PortalSettings): Promise<Plan> {
+    return super.plan(alias, this.cnameSettings(settings, alias));
+  }
+  override async apply(alias: Alias, settings: PortalSettings, plan: Plan): Promise<void> {
+    return super.apply(alias, this.cnameSettings(settings, alias), plan);
+  }
+  override async verify(alias: Alias, settings: PortalSettings): Promise<VerifyResult> {
+    return super.verify(alias, this.cnameSettings(settings, alias));
+  }
   protected zone(settings: PortalSettings, alias: Alias) { return cloudConfig(settings, alias).config?.zone; }
 
   private base(zone: string) { return `https://api.cloudflare.com/client/v4/zones/${zone}/dns_records`; }
   private headers(token: string) { return {authorization: `Bearer ${token}`, 'content-type': 'application/json'}; }
 
   protected async list(zone: string, name: string, token: string): Promise<ExistingRecord> {
-    const data = await jsonRequest(`${this.base(zone)}?type=A&name=${encodeURIComponent(name)}`, {headers: this.headers(token)});
+    const data = await jsonRequest(`${this.base(zone)}?type=${this.recordType}&name=${encodeURIComponent(name)}`, {headers: this.headers(token)});
     const rows = (data.result as Json[] | undefined) ?? [];
     const row = rows[0];
     if (!row) return null;
@@ -191,7 +206,7 @@ export class CloudflareDnsProvider extends CloudDnsProvider {
     await jsonRequest(this.base(zone), {
       method: 'POST',
       headers: this.headers(token),
-      body: JSON.stringify({type: 'A', name: record.name, content: record.value, ttl: record.ttl, proxied: false}),
+      body: JSON.stringify({type: this.recordType, name: record.name, content: record.value, ttl: record.ttl, proxied: false}),
     });
   }
 
@@ -199,7 +214,7 @@ export class CloudflareDnsProvider extends CloudDnsProvider {
     await jsonRequest(`${this.base(zone)}/${existing.id}`, {
       method: 'PATCH',
       headers: this.headers(token),
-      body: JSON.stringify({type: 'A', name: record.name, content: record.value, ttl: record.ttl, proxied: false}),
+      body: JSON.stringify({type: this.recordType, name: record.name, content: record.value, ttl: record.ttl, proxied: false}),
     });
   }
 }

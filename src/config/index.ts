@@ -66,6 +66,8 @@ export type CloudProviderConfig = {
   credentialsEnv?: string;
   /** 公网写入必须显式开启；默认关闭。 */
   allowPublicWrite?: boolean;
+  /** 公网别名统一指向 raw 入口，避免各自维护 A 记录。 */
+  cnameTarget?: string;
 };
 
 export type ProvidersConfig = {
@@ -111,7 +113,7 @@ export type Alias = {
 
 export type Registry = {aliases: Alias[]};
 
-const DEFAULTS = (): PortalSettings => ({
+const DEFAULTS = (): PortalSettings & {providers: ProvidersConfig} => ({
   suffix: '',
   mode: 'lan',
   lanIp: '',

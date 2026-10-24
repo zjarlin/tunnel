@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Tunnel</title><link rel="stylesheet" href="style.css"><script type="module" src="app.js"></script>
+</head>
+<body>
+  <header><a class="brand" href="./"><span class="mark">↗</span> Tunnel</a><span class="subtitle" data-i18n="subtitle"></span><button id="logout" hidden data-i18n="logout"></button></header>
+  <main>
+    <section id="login" class="login" hidden>
+      <span class="eyebrow">TUNNEL CONSOLE</span><h1 data-i18n="welcome"></h1>
+      <form id="login-form"><label><span data-i18n="account"></span><input name="user" autocomplete="username" required></label><label><span data-i18n="password"></span><input name="password" type="password" autocomplete="current-password" required></label><button class="primary" data-i18n="login"></button></form>
+    </section>
+    <section id="workspace" hidden>
+      <div class="heading"><div><span class="eyebrow">SERVICE REGISTRY</span><h1 data-i18n="services"></h1><span id="domain" class="domain"></span></div><button id="apply" class="primary" data-i18n="apply"></button></div>
+      <div class="panel"><form id="service-form" class="service-form">
+        <label><span data-i18n="alias"></span><input name="alias" required pattern="[a-z0-9][a-z0-9-]*" placeholder="gitlab"></label>
+        <label class="target"><span data-i18n="target"></span><input name="host" required placeholder="server.mesh"></label>
+        <label><span data-i18n="port"></span><input name="port" type="number" min="1" max="65535" required placeholder="8080"></label>
+        <label><span data-i18n="scheme"></span><select name="scheme"><option>http</option><option>https</option></select></label>
+        <label><span data-i18n="visibility"></span><select name="visibility"><option value="internal" data-i18n="internal"></option><option value="public" data-i18n="public"></option></select></label>
+        <label class="target"><span data-i18n="note"></span><input name="note" maxlength="300"></label>
+        <button type="submit" data-i18n="save"></button>
+      </form></div>
+      <div class="panel table-wrap"><table><thead><tr><th data-i18n="domain"></th><th data-i18n="target"></th><th data-i18n="visibility"></th><th data-i18n="note"></th><th data-i18n="actions"></th></tr></thead><tbody id="rows"></tbody></table><p id="empty" data-i18n="empty" hidden></p></div>
+      <details><summary data-i18n="integration"></summary><code>GET /api/services · PUT /api/services · POST /api/apply</code></details>
+    </section>
+    <p id="message" role="status" aria-live="polite" hidden></p>
+  </main>
+  <footer>Tunnel <span>0.3.0</span> <a href="https://github.com/zjarlin/tunnel" target="_blank" rel="noopener">GitHub ↗</a></footer>
+</body>
+</html>

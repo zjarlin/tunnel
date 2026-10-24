@@ -1,29 +1,36 @@
 {
-  "name": "aio-plugin-portal",
-  "version": "0.2.0",
-  "description": "在期望态里协调 DNS（本地/Cloudflare/腾讯云/华为云）、Caddy 反代、证书与内网访问策略，把别名站点的可见范围钉死在登记表里。",
+  "name": "@zjarlin/tunnel",
+  "version": "0.3.0",
+  "description": "Independent service portal for DNS, Caddy and EasyTier; optional AIO sidecar",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "aio-plugin-portal": "dist/cli.mjs"
+    "aio-plugin-portal": "dist/cli.mjs",
+    "tunnel": "dist/cli.mjs"
   },
   "files": [
     "dist",
     "config",
     "README.md",
-    "skills"
+    "skills",
+    "docker-compose.yml",
+    ".env.example"
   ],
   "engines": {
     "node": ">=22.14.0"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "npm run build && node --test",
+    "test": "npm run check && npm run build && node --test",
     "prepack": "npm run build",
-    "prepare": "node scripts/build.mjs"
+    "prepare": "node scripts/build.mjs",
+    "start": "node dist/server.mjs",
+    "check": "tsc --noEmit"
   },
   "devDependencies": {
-    "esbuild": "0.28.2"
+    "@types/node": "22.20.5",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
   },
   "publishConfig": {
     "access": "public",
@@ -31,6 +38,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/org-aio/aio-plugin-portal.git"
+    "url": "git+https://github.com/zjarlin/tunnel.git"
   }
 }

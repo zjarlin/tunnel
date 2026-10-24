@@ -317,6 +317,21 @@ async function jsonRequest(url, init) {
 }
 var CloudflareDnsProvider = class extends CloudDnsProvider {
   name = "cloudflare";
+  recordType = "A";
+  cnameSettings(settings2, alias) {
+    const target = cloudConfig(settings2, alias).config?.cnameTarget;
+    this.recordType = target ? "CNAME" : "A";
+    return target ? { ...settings2, lanIp: target } : settings2;
+  }
+  async plan(alias, settings2) {
+    return super.plan(alias, this.cnameSettings(settings2, alias));
+  }
+  async apply(alias, settings2, plan2) {
+    return super.apply(alias, this.cnameSettings(settings2, alias), plan2);
+  }
+  async verify(alias, settings2) {
+    return super.verify(alias, this.cnameSettings(settings2, alias));
+  }
   zone(settings2, alias) {
     return cloudConfig(settings2, alias).config?.zone;
   }
@@ -327,7 +342,7 @@ var CloudflareDnsProvider = class extends CloudDnsProvider {
     return { authorization: `Bearer ${token}`, "content-type": "application/json" };
   }
   async list(zone, name, token) {
-    const data = await jsonRequest(`${this.base(zone)}?type=A&name=${encodeURIComponent(name)}`, { headers: this.headers(token) });
+    const data = await jsonRequest(`${this.base(zone)}?type=${this.recordType}&name=${encodeURIComponent(name)}`, { headers: this.headers(token) });
     const rows = data.result ?? [];
     const row = rows[0];
     if (!row) return null;
@@ -337,14 +352,14 @@ var CloudflareDnsProvider = class extends CloudDnsProvider {
     await jsonRequest(this.base(zone), {
       method: "POST",
       headers: this.headers(token),
-      body: JSON.stringify({ type: "A", name: record.name, content: record.value, ttl: record.ttl, proxied: false })
+      body: JSON.stringify({ type: this.recordType, name: record.name, content: record.value, ttl: record.ttl, proxied: false })
     });
   }
   async update(zone, record, existing, token) {
     await jsonRequest(`${this.base(zone)}/${existing.id}`, {
       method: "PATCH",
       headers: this.headers(token),
-      body: JSON.stringify({ type: "A", name: record.name, content: record.value, ttl: record.ttl, proxied: false })
+      body: JSON.stringify({ type: this.recordType, name: record.name, content: record.value, ttl: record.ttl, proxied: false })
     });
   }
 };
@@ -955,7 +970,7 @@ async function main() {
   });
   const [command, argument] = positionals;
   if (values.version) {
-    console.log("0.2.0");
+    console.log("0.3.0");
     return;
   }
   if (values.help || !command) {

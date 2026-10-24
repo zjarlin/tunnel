@@ -1,16 +1,22 @@
 {
   "suffix": "example.internal",
   "mode": "lan",
-  "lanIp": "192.168.1.10",
+  "lanIp": "",
   "hostsFile": "/etc/hosts",
   "resolver": {
     "port": 53,
-    "upstreams": ["223.5.5.5", "114.114.114.114"],
+    "upstreams": [
+      "223.5.5.5",
+      "114.114.114.114"
+    ],
     "service": "aio-portal-dns",
     "provider": "dnsmasq",
     "fragment": true,
     "configFile": "/etc/dnsmasq.d/intranet/20-aio-portal.conf",
-    "testCommand": ["dnsmasq", "--test"]
+    "testCommand": [
+      "dnsmasq",
+      "--test"
+    ]
   },
   "portal": {
     "root": "/opt/aio-portal",
@@ -18,15 +24,15 @@
     "reload": true
   },
   "gateway": {
-    "address": "192.168.1.1",
+    "address": "",
     "adapter": "xiaomi",
     "fallbackDns": "223.5.5.5"
   },
   "caddy": {
     "sitesDir": "/opt/aio-portal/caddy/sites",
     "prefix": "portal-",
-    "bind": "192.168.1.10",
-    "allow": ["192.168.1.0/24", "10.144.144.0/24"],
+    "bind": "",
+    "allow": [],
     "denyStatus": 404,
     "binary": "caddy"
   },

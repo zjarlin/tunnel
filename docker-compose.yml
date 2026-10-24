@@ -1,0 +1,26 @@
+name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME is required}
+services:
+  tunnel:
+    image: ${TUNNEL_NODE_IMAGE:?TUNNEL_NODE_IMAGE is required}
+    container_name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME is required}
+    restart: unless-stopped
+    network_mode: host
+    working_dir: /app
+    command: [node, server.mjs]
+    env_file: .env
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+    volumes:
+      - ./release/dist:/app:ro
+      - ./data:/data
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://'+process.env.TUNNEL_BIND+':'+process.env.TUNNEL_PORT+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

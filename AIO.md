@@ -1,23 +1,13 @@
-# CLI 自动发布
+# AIO sidecar 接入
 
-本项目通过 AIO 初始化。`aio-cli.json` 声明市场名称、适用平台及安装后/卸载前参数；CLI 实现与 AIO 宿主无关。
-
-## 首次配置
-
-先将项目推送到自己的 GitHub 仓库，再在项目目录执行一次：
+Tunnel 独立运行。AIO 只加载 `dist/web` 和 `dist/sidecar.mjs`，通过服务 API 使用同一份登记数据。
 
 ```sh
-npx -y @zjarlin/aio@2026.9.22 tool release setup
+node dist/sidecar.mjs
 ```
 
-此命令从 Git origin 自动填写 npm 仓库地址，检查 CLI 声明；npm 包尚不存在时先测试并完成首次公开发布，然后配置该仓库 `aio-cli.yml` 的 Trusted Publisher。
+宿主提供 `AIO_PLUGIN_CONFIG`、`AIO_PLUGIN_SOCKET`。管理员配置 `TUNNEL_URL`、`TUNNEL_API_TOKEN`、`TUNNEL_AIO_TENANT` 和 `TUNNEL_AIO_USERS`。最后两个字段限定允许访问基础设施管理能力的租户与用户，不默认授权全部 AIO 用户。
 
-## 日常开发
+适配器实现 AIO v2 的 `/health`、`/aio/describe` 和 Unix socket 业务请求。`dist/web` 复用宿主注入的 `aioPlugin.json`。API token 只存在服务端。
 
-默认分支每次推送经过测试后发布 npm `next` 并更新市场条目；`vX.Y.Z` 标签发布 npm `latest`。
-市场显示已登记的最高 SemVer，安装命令固定精确版本。
-
-## 随 CLI 分发技能
-
-`skills/aio-plugin-portal/SKILL.md` 目录名必须与 frontmatter 的 `name` 一致，npm `files` 包含 `skills`。
-AIO 2026.9.18+ 安装后自动复制到 `~/.agents/skills`；直接 npm/npx 不写入技能目录。
+独立部署不依赖 AIO 在线，也不连接 AIO 数据库。宿主 process 沙箱必须允许到 Tunnel 的网络连接；本仓库提供可运行适配器和接口测试，不自动修改正在运行的 AIO 插件组合。

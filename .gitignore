@@ -1,2 +1,5 @@
 /node_modules
 /.aio/
+.env
+/data/
+/release/
