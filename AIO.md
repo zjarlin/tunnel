@@ -10,6 +10,8 @@ npm test
 node --env-file="$TUNNEL_ENV_FILE" scripts/package-aio.mjs
 ```
 
+打包在 Linux x64 上使用 gcc 生成 ELF 入口，脚本内容嵌入该产物并由批准镜像中的 Node 执行；不新增 Dockerfile。测试会实际启动打包后的 ELF，检查进程描述接口。
+
 `.env` 提供 `TUNNEL_NODE_IMAGE`（锁定 digest）和 `TUNNEL_AIO_ENDPOINT`（完整 `/api/aio` 地址）。`dist/tunnel.aio-plugin` 是待安装整包，脚本打印真实 commit/digest。将该端点添加到宿主 `AIO_PROCESS_HTTP_ENDPOINTS`；复用宿主已批准的 Node 镜像。通过 AIO 发布/安装 API 或已有 `bootstrap_components` 引导加载，不能以「文件复制完成」代替插件激活检查。
 
 插件数据库的 `tunnel_connection` 只有一条部署连接：`endpoint`、使用宿主 `encryption_key` 的 AES-256-GCM 加密 `token`、允许的 `users` 数组。密文格式为 base64(iv[12] + tag[16] + ciphertext)。部署者写入该表；不向插件授予其他应用数据库权限。宿主先校验有效会话、租户和插件活动版本，sidecar 再校验 ingress token 与用户白名单，Tunnel 再校验服务令牌、租户和用户。

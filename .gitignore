@@ -6,3 +6,4 @@
 
 /dist/tunnel.aio-plugin
 /dist/aio-manifest.toml
+/dist/aio-sidecar

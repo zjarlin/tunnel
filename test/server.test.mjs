@@ -23,7 +23,7 @@ test('standalone authentication, internal publishing, restart persistence and bl
   const caddy = createServer(async (req, res) => {
     if (req.method === 'POST') { let body = ''; for await (const chunk of req) { body += chunk; } changes.push(JSON.parse(body)); }
     res.setHeader('etag', '"/config/ test"');
-    res.end(JSON.stringify({apps: {http: {servers: {test: {routes: [{match: [{host: ['127.0.0.1']}]}]}}}, tls: {automation: {policies: []}}}}));
+    res.end(JSON.stringify({apps: {http: {servers: {test: {routes: [{match: [{host: ['127.0.0.1']}]}]}}}, tls: {automation: {policies: [{subjects:['git.example.test','other.example.test'],issuers:[{module:'internal'}]}]}}}}));
   });
   caddy.listen(0, '127.0.0.1'); await once(caddy, 'listening');
   const env = {...process.env, TUNNEL_DATA: dir, TUNNEL_DOMAIN: 'example.test', TUNNEL_RAW_HOST: 'raw.example.test', TUNNEL_LAN_IP: '127.0.0.1', TUNNEL_ALLOWED_CIDRS: '127.0.0.1/32', TUNNEL_BIND: '127.0.0.1', TUNNEL_PORT: String(port), TUNNEL_PUBLIC_URL: `http://127.0.0.1:${port}`, TUNNEL_ADMIN_USER: 'tester', TUNNEL_ADMIN_PASSWORD: 'test-only-password', TUNNEL_API_TOKEN: 'test-api-token', TUNNEL_CADDY_ADMIN: `http://127.0.0.1:${caddy.address().port}`, TUNNEL_CF_TOKEN: '', TUNNEL_CF_ZONE: ''};
@@ -45,6 +45,9 @@ test('standalone authentication, internal publishing, restart persistence and bl
   assert.equal((await api('/api/services', 'PUT', item, auth)).status, 200);
   assert.equal((await api('/api/apply', 'POST', {}, auth)).status, 200);
   assert.equal(changes.length, 1);
+  const subjects=changes[0].apps.tls.automation.policies.flatMap(policy=>policy.subjects);
+  assert.equal(subjects.filter(name=>name==='git.example.test').length,1);
+  assert.ok(subjects.includes('other.example.test'));
   assert.equal(changes[0].apps.http.servers.test.routes[0].handle[0].routes[0].handle[0].routes[0].match[0].remote_ip.ranges[0], '127.0.0.1/32');
   assert.equal(changes[0].apps.http.servers.test.routes[0].handle[0].routes[0].handle[0].routes[1].handle[0].status_code, 404);
   await api('/api/services', 'PUT', {...item, alias: 'public', visibility: 'public'}, auth);

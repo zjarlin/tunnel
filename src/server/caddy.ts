@@ -82,7 +82,11 @@ export async function publish(settings: PortalSettings, aliases: Alias[], endpoi
       config.apps.tls ??= {};
       config.apps.tls.automation ??= {};
       const issuerId = 'tunnel-internal-certificates';
-      const policies = (config.apps.tls.automation.policies ?? []).filter(policy => policy['@id'] !== issuerId);
+      const managedDomains = new Set(aliases.map(item => serviceDomain(settings, item)));
+      const policies = (config.apps.tls.automation.policies ?? [])
+        .filter(policy => policy['@id'] !== issuerId)
+        .map(policy => Array.isArray(policy.subjects) ? {...policy, subjects: policy.subjects.filter(subject => !managedDomains.has(String(subject)))} : policy)
+        .filter(policy => !Array.isArray(policy.subjects) || policy.subjects.length > 0);
       const internal = aliases.filter(item => item.visibility !== 'public').map(item => serviceDomain(settings, item));
       if (internal.length) { policies.unshift({'@id': issuerId, subjects: internal, issuers: [{module: 'internal'}]}); }
       changed ||= JSON.stringify(config.apps.tls.automation.policies) !== JSON.stringify(policies);
