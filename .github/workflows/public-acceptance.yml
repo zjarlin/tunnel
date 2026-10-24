@@ -8,7 +8,16 @@ on:
         type: string
       expected:
         description: Expected application text
+        required: false
+        type: string
+      expected_status:
+        description: Expected HTTP status
         required: true
+        default: '200'
+        type: string
+      connect_host:
+        description: Optional connection hostname for testing private DNS names
+        required: false
         type: string
       diagnostic_ports:
         description: Optional comma-separated TCP ports on the same host
@@ -25,11 +34,13 @@ jobs:
         env:
           ACCEPTANCE_URL: ${{ inputs.url }}
           DIAGNOSTIC_PORTS: ${{ inputs.diagnostic_ports }}
+          CONNECT_HOST: ${{ inputs.connect_host }}
         run: |
           python3 -u - <<'PY'
           import concurrent.futures, os, socket, urllib.parse, urllib.request
           target = urllib.parse.urlsplit(os.environ['ACCEPTANCE_URL'])
           assert target.scheme == 'https' and target.hostname, 'HTTPS URL required'
+          connect_host = os.environ['CONNECT_HOST'] or target.hostname
           ports = {target.port or 443}
           ports.update(int(value.strip()) for value in os.environ['DIAGNOSTIC_PORTS'].split(',') if value.strip())
           assert len(ports) <= 6 and all(0 < port <= 65535 for port in ports), 'Invalid diagnostic ports'
@@ -38,10 +49,10 @@ jobs:
                   print('Runner public IPv4:', response.read(64).decode())
           except OSError as error:
               print('Runner address lookup failed:', error)
-          print('Target DNS:', sorted({entry[4][0] for entry in socket.getaddrinfo(target.hostname, None)}))
+          print('Target DNS:', sorted({entry[4][0] for entry in socket.getaddrinfo(connect_host, None)}))
           def probe(port):
               try:
-                  with socket.create_connection((target.hostname, port), timeout=5) as connection:
+                  with socket.create_connection((connect_host, port), timeout=5) as connection:
                       return f'TCP {port}: connected to {connection.getpeername()}'
               except OSError as error:
                   return f'TCP {port}: {error}'
@@ -53,15 +64,32 @@ jobs:
         env:
           ACCEPTANCE_URL: ${{ inputs.url }}
           EXPECTED_TEXT: ${{ inputs.expected }}
+          EXPECTED_STATUS: ${{ inputs.expected_status }}
+          CONNECT_HOST: ${{ inputs.connect_host }}
         run: |
-          curl --silent --show-error --fail --proto '=https' \
-            --connect-timeout 15 --max-time 45 --retry 1 --retry-delay 3 --retry-all-errors \
-            --output acceptance.html \
-            --write-out 'HTTP=%{http_code} remote=%{remote_ip} TLS=%{ssl_verify_result}\n' \
-            "$ACCEPTANCE_URL"
           python3 - <<'PY'
-          import os, pathlib
+          import json, os, pathlib, re, subprocess, urllib.parse
+          target = urllib.parse.urlsplit(os.environ['ACCEPTANCE_URL'])
+          expected_status = int(os.environ['EXPECTED_STATUS'])
+          expected_text = os.environ['EXPECTED_TEXT']
+          assert 200 <= expected_status <= 599, 'Invalid expected HTTP status'
+          assert expected_status >= 400 or expected_text, 'Successful pages require application identity text'
+          command = ['curl', '--silent', '--show-error', '--proto', '=https',
+                     '--connect-timeout', '15', '--max-time', '45', '--retry', '1',
+                     '--retry-delay', '3', '--retry-all-errors', '--output', 'acceptance.html',
+                     '--write-out', '%{json}']
+          connect_host = os.environ['CONNECT_HOST']
+          if connect_host:
+              assert re.fullmatch(r'[A-Za-z0-9.-]+', connect_host), 'Invalid connection hostname'
+              port = target.port or 443
+              command.extend(['--connect-to', f'{target.hostname}:{port}:{connect_host}:{port}'])
+          result = subprocess.run([*command, os.environ['ACCEPTANCE_URL']], text=True, capture_output=True)
+          print(result.stderr, end='')
+          result.check_returncode()
+          response = json.loads(result.stdout)
+          print(f"HTTP={response['http_code']} remote={response['remote_ip']} TLS={response['ssl_verify_result']}")
+          assert response['http_code'] == expected_status, 'Unexpected HTTP status'
           page = pathlib.Path('acceptance.html').read_text()
-          assert os.environ['EXPECTED_TEXT'] in page, 'Unexpected application response'
-          print('Application identity verified')
+          assert not expected_text or expected_text in page, 'Unexpected application response'
+          print('Application identity verified' if expected_text else 'Access policy verified')
           PY
