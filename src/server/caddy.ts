@@ -4,7 +4,7 @@ import type {Certificate} from './certificates.js';
 
 type CaddyConfig = {
   apps: {
-    http: {servers: Record<string, {listen?: string[]; routes?: Array<Record<string, unknown>>}>};
+    http: {servers: Record<string, {listen?: string[]; routes?: Array<Record<string, unknown>>; tls_connection_policies?: Array<Record<string, unknown>>}>};
     tls?: {automation?: {policies?: Array<Record<string, unknown>>}; certificates?: {load_pem?: Certificate[]}};
   };
 };
@@ -79,6 +79,19 @@ export async function publish(settings: PortalSettings, aliases: Alias[], endpoi
         }
         server.routes = aliases.length ? [managed, ...other] : other;
         changed ||= original !== JSON.stringify(server.routes);
+        // 内部 CA 的旧证书可能仍在 Caddy 缓存中，按 SNI 明确选择新签发的证书。
+        const previousTls = server.tls_connection_policies;
+        const unmanagedTls = (previousTls ?? [{}]).filter(policy => {
+          const selection = policy.certificate_selection as {any_tag?: string[]} | undefined;
+          return !selection?.any_tag?.some(tag => tag.startsWith('tunnel-service:'));
+        });
+        const selectedTls = certificates.flatMap(cert => cert.tags.filter(tag => tag.startsWith('tunnel-service:')).map(tag => ({
+          match: {sni: [tag.slice('tunnel-service:'.length)]}, certificate_selection: {any_tag: [tag]},
+        })));
+        if (selectedTls.length || previousTls) {
+          server.tls_connection_policies = [...selectedTls, ...unmanagedTls];
+          changed ||= JSON.stringify(previousTls) !== JSON.stringify(server.tls_connection_policies);
+        }
       }
       config.apps.tls ??= {};
       config.apps.tls.certificates ??= {};
