@@ -34,7 +34,7 @@ export function caddyRequest(endpoint: string, path: string, method = 'GET', bod
 
 export function routes(settings: PortalSettings, aliases: Alias[]): unknown[] {
   return aliases.map(item => {
-    const proxy = {handler: 'reverse_proxy', upstreams: [{dial: `${item.host}:${item.port}`}], ...(item.scheme === 'https' ? {transport: {protocol: 'http', tls: {}}} : {})};
+    const proxy = {handler: 'reverse_proxy', upstreams: [{dial: `${item.host}:${item.port}`}], ...(item.scheme === 'https' ? {transport: {protocol: 'http', tls: item.tlsServerName ? {server_name: item.tlsServerName} : {}}} : {})};
     const handlers = item.visibility === 'public'
       ? [proxy]
       : [{handler: 'subroute', routes: [

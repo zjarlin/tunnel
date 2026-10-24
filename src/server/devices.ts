@@ -52,7 +52,7 @@ export function probe(host: string, port: number): Promise<void> {
     const socket = connect({host, port});
     socket.setTimeout(5000);
     socket.once('connect', () => { socket.destroy(); resolve(); });
-    socket.once('error', () => reject(new Error(`目标服务 ${host}:${port} 不可达，请检查 EasyTier 和服务监听`)));
+    socket.once('error', () => reject(new Error(`目标服务 ${host}:${port} 不可达，请检查连接通道和服务监听`)));
     socket.once('timeout', () => { socket.destroy(); reject(new Error(`目标服务 ${host}:${port} 连接超时`)); });
   });
 }

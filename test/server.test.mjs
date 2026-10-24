@@ -41,7 +41,15 @@ test('standalone authentication, internal publishing, restart persistence and bl
   assert.equal((await api('/api/services', 'GET', undefined, auth)).status, 200);
   assert.equal((await api('/api/services', 'PUT', {}, {...auth, origin: 'https://evil.test'})).status, 403);
   const item = {alias: 'git', host: '127.0.0.1', port: 8080, scheme: 'http', visibility: 'internal', note: 'test'};
+  const page = await (await fetch(base)).text();
+  assert.match(page, /select name="transport"/);
+  assert.match(page, /option value="frp"/);
   assert.equal((await api('/api/services', 'PUT', {...item, alias: '../escape'}, auth)).status, 400);
+  assert.equal((await api('/api/services', 'PUT', {...item, transport:'unknown'}, auth)).status, 400);
+  assert.equal((await api('/api/services', 'PUT', {...item, transport:'frp', host:'', deviceId:'paired-device'}, auth)).status, 400);
+  assert.equal((await api('/api/services', 'PUT', {...item, transport:'frp', host:'relay.example.test'}, auth)).status, 400);
+  assert.equal((await api('/api/services', 'PUT', {...item, transport:'frp', scheme:'https'}, auth)).status, 400);
+  assert.equal((await api('/api/services', 'PUT', {...item, scheme:'https', tlsServerName:'invalid/path'}, auth)).status, 400);
   assert.equal((await api('/api/services', 'PUT', {...item, dnsMode:'existing', accountId:'external'}, auth)).status, 400);
   assert.equal((await api('/api/services', 'PUT', {...item, visibility:'public', dnsMode:'existing'}, auth)).status, 400);
   assert.equal((await api('/api/services', 'PUT', {...item, dnsMode:'invalid'}, auth)).status, 400);

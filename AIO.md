@@ -30,6 +30,8 @@ aio device connect --server "$AIO_URL" --name "$DEVICE_NAME"
 
 在「配对设备」绑定 EasyTier 地址。添加服务时选择设备，目标主机留空表示该设备本机；填写子网地址表示入口已通过 EasyTier 子网路由可达的目标。配对和网络可达分别验证；发布前探测实际端口，离线或端口不可达会显示失败。撤销配对后，恢复循环会在 30 秒内移除对应 Caddy 路由。EasyTier 网络和子网路由需事先配置，不会擅自劫持客户端直连路由。
 
+选择「FRP 映射」后，地址和端口表示现有 FRP 映射的接收端，不再从设备的 EasyTier 地址推导。FRP 与 EasyTier 都复用既有网络通道；本插件负责入口发布，不接管 frps/frpc 生命周期或凭据。仅内网映射只接受入口本机回环监听，避免 FRP 端口绕过 Caddy 的访问限制；删除登记只撤下入口，已有 FRP 映射需在原管理系统关闭。旧登记缺少连接方式时继续按 EasyTier / 直连解释，旧版客户端编辑已有 FRP 登记时会保留其连接方式。
+
 ## 内网解析加载
 
 发布生成 `data/dns/tunnel.hosts`。现役主机使用 systemd path unit 监听该文件，把记录合并到 `/etc/hosts` 的独立受管区块，保留其他行，再向 dnsmasq 主进程发送 HUP。dnsmasq 使用默认 hosts 加载机制，无需重启或修改路由器 DHCP。已有 `addn-hosts` 部署也可直接引用该文件并发送 HUP，两种方式选其一。

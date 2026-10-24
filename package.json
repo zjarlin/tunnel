@@ -1,7 +1,7 @@
 {
   "name": "@zjarlin/tunnel",
   "version": "0.4.0",
-  "description": "Independent service portal for DNS, Caddy and EasyTier; optional AIO sidecar",
+  "description": "Independent service portal for DNS, Caddy, EasyTier and FRP; optional AIO sidecar",
   "type": "module",
   "license": "MIT",
   "bin": {

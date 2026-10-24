@@ -102,6 +102,8 @@ export type Alias = {
   deviceId?: string;
   accountId?: string;
   dnsMode?: 'managed' | 'existing';
+  transport?: 'easytier' | 'frp';
+  tlsServerName?: string;
   host: string;
   port: number;
   scheme: 'http' | 'https';

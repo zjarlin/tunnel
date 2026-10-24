@@ -16,7 +16,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - run: npm test
+      - name: Test with temporary FRP forwarding
+        run: node scripts/test-frp.mjs
       - run: |
           mkdir -p release
           cp -R dist release/dist

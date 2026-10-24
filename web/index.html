@@ -7,7 +7,7 @@
 <section id="login" class="login" hidden><h1 data-i18n="welcome"></h1><form id="login-form"><label><span data-i18n="account"></span><input name="user" autocomplete="username" required></label><label><span data-i18n="password"></span><input name="password" type="password" autocomplete="current-password" required></label><button class="primary" data-i18n="login"></button></form></section>
 <section id="workspace" hidden>
 <div class="heading"><div><h1 data-i18n="services"></h1><span id="domain" class="domain"></span></div><div class="actions"><button id="devices-button" data-i18n="devices"></button><button id="accounts-button" data-i18n="accounts"></button><button id="new-service" data-i18n="add"></button><button id="apply" class="primary" data-i18n="apply"></button></div></div>
-<div class="panel table-wrap"><table><thead><tr><th data-i18n="domain"></th><th data-i18n="device"></th><th data-i18n="target"></th><th data-i18n="visibility"></th><th data-i18n="dnsMode"></th><th data-i18n="note"></th><th data-i18n="actions"></th></tr></thead><tbody id="rows"></tbody></table><p id="empty" data-i18n="empty" hidden></p></div>
+<div class="panel table-wrap"><table><thead><tr><th data-i18n="domain"></th><th data-i18n="device"></th><th data-i18n="transport"></th><th data-i18n="target"></th><th data-i18n="visibility"></th><th data-i18n="dnsMode"></th><th data-i18n="note"></th><th data-i18n="actions"></th></tr></thead><tbody id="rows"></tbody></table><p id="empty" data-i18n="empty" hidden></p></div>
 <div id="publication" role="status" aria-live="polite"></div>
 </section>
 <p id="message" role="status" aria-live="polite" hidden></p>
@@ -17,9 +17,11 @@
 <label><span data-i18n="alias"></span><input name="alias" required pattern="[a-z0-9][a-z0-9-]*" placeholder="gitlab"></label>
 <label><span data-i18n="suffix"></span><input name="domain" required></label>
 <label><span data-i18n="device"></span><select name="deviceId" id="device-select"></select></label>
-<label><span data-i18n="target"></span><input name="host" placeholder="留空使用设备本机"></label>
-<label><span data-i18n="port"></span><input name="port" type="number" min="1" max="65535" required placeholder="8080"></label>
+<label><span data-i18n="transport"></span><select name="transport"><option value="easytier" data-i18n="easytier"></option><option value="frp" data-i18n="frp"></option></select></label>
+<label><span id="target-label" data-i18n="target"></span><input name="host"></label>
+<label><span id="port-label" data-i18n="port"></span><input name="port" type="number" min="1" max="65535" required placeholder="8080"></label>
 <label><span data-i18n="scheme"></span><select name="scheme"><option>http</option><option>https</option></select></label>
+<label id="tls-server-name" hidden><span data-i18n="tlsServerName"></span><input name="tlsServerName" disabled></label>
 <label><span data-i18n="visibility"></span><select name="visibility"><option value="internal" data-i18n="internal"></option><option value="public" data-i18n="public"></option></select></label>
 <label><span data-i18n="dnsAccount"></span><select name="accountId" id="account-select"></select></label>
 <label><span data-i18n="dnsMode"></span><select name="dnsMode"><option value="managed" data-i18n="managed"></option><option value="existing" data-i18n="existing"></option></select></label>

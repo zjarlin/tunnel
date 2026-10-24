@@ -3,6 +3,7 @@ const words = {
 };
 const $ = id => document.getElementById(id);
 Object.assign(words, {dnsMode:'DNS 方式', managed:'自动管理 DNS', existing:'保留现有公网 DNS', removeExistingConfirm:'删除本地登记与代理？原公网入口和 DNS 会保留，需要在原入口单独关闭。'});
+Object.assign(words, {transport:'连接方式', easytier:'EasyTier / 直连', frp:'FRP 映射', frpHost:'FRP 映射地址', frpPort:'FRP 映射端口', frpPlaceholder:'127.0.0.1 或中转主机名', devicePlaceholder:'留空使用设备本机', frpRemoveConfirm:'已有 FRP 映射仍由原系统管理，需要在原系统单独关闭。', tlsServerName:'上游 TLS 主机名'});
 document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = words[node.dataset.i18n]; });
 document.querySelectorAll('[data-close]').forEach(node => { node.onclick = () => $(node.dataset.close).close(); });
 const hosted = Boolean(window.aioPlugin);
@@ -25,6 +26,22 @@ function showStatus(status) {
   $('publication').textContent = status ? `${new Date(status.at).toLocaleString()} · ${(status.steps || []).map(item => `${item.step}：${words[item.state] || item.state}${item.detail ? `（${item.detail}）` : ''}`).join(' → ')}` : words.pending;
   $('publication').className = status?.state === 'failed' ? 'error' : '';
 }
+function connectionFields() {
+  const form = $('service-form');
+  const frp = form.elements.transport.value === 'frp';
+  $('target-label').textContent = words[frp ? 'frpHost' : 'target'];
+  $('port-label').textContent = words[frp ? 'frpPort' : 'port'];
+  form.elements.host.placeholder = words[frp ? 'frpPlaceholder' : 'devicePlaceholder'];
+  form.elements.host.required = frp || !form.elements.deviceId.value;
+  const https = form.elements.scheme.value === 'https';
+  $('tls-server-name').hidden = !https;
+  form.elements.tlsServerName.disabled = !https;
+  form.elements.tlsServerName.required = https && frp;
+  for (const option of $('device-select').options) {
+    const device = devices.find(item => item.id === option.value);
+    if (device) { option.textContent = `${device.label} · ${words[device.status] || device.status}${!frp && !device.address ? ` · ${words.bindRequired}` : ''}`; }
+  }
+}
 async function refresh() {
   const [registry, deviceList, accountList] = await Promise.all([api('/api/services'), api('/api/devices'), api('/api/accounts')]);
   devices = deviceList.items; accounts = accountList.items; domain = registry.domain;
@@ -34,14 +51,15 @@ async function refresh() {
   $('account-select').replaceChildren(option('', words.defaultAccount), ...accounts.map(item => option(item.id, `${item.label} · ${item.domain}`)));
   for (const item of registry.items) {
     const device = devices.find(entry => entry.id === item.deviceId);
-    const row = cells([`${item.alias}.${item.domain || domain}`, item.deviceId ? device?.label || words.revoked : words.direct, `${item.scheme}://${item.host || device?.address || words.configuredHost}:${item.port}`, words[item.visibility], words[item.dnsMode || 'managed'], item.note]);
+    const row = cells([`${item.alias}.${item.domain || domain}`, item.deviceId ? device?.label || words.revoked : words.direct, words[item.transport || 'easytier'], `${item.scheme}://${item.host || device?.address || words.configuredHost}:${item.port}`, words[item.visibility], words[item.dnsMode || 'managed'], item.note]);
     const actions = document.createElement('td'); actions.className = 'actions';
     actions.append(button(words.edit, () => {
       const form = $('service-form'); form.reset();
-      for (const key of ['alias','domain','deviceId','accountId','dnsMode','host','port','scheme','visibility','note']) { form.elements[key].value = item[key] ?? ({domain, dnsMode:'managed'}[key] || ''); }
-      form.elements.alias.readOnly = true; $('service-dialog').showModal();
+      for (const key of ['alias','domain','deviceId','accountId','dnsMode','transport','tlsServerName','host','port','scheme','visibility','note']) { form.elements[key].value = item[key] ?? ({domain, dnsMode:'managed', transport:'easytier'}[key] || ''); }
+      form.elements.alias.readOnly = true; connectionFields(); $('service-dialog').showModal();
     }), button(words.remove, async () => {
-      if (!confirm(item.dnsMode === 'existing' ? words.removeExistingConfirm : words.removeConfirm)) { return; }
+      const confirmation = item.dnsMode === 'existing' ? words.removeExistingConfirm : words.removeConfirm;
+      if (!confirm(confirmation + (item.transport === 'frp' ? `\n${words.frpRemoveConfirm}` : ''))) { return; }
       try { await api(`/api/services/${encodeURIComponent(item.alias)}`, 'DELETE'); await refresh(); await publish(); } catch (error) { message(error.message, true); }
     })); row.append(actions); $('rows').append(row);
   }
@@ -61,7 +79,10 @@ async function publish() {
     throw new Error('发布仍在处理，请查看发布状态');
   } finally { publishing = false; $('apply').disabled = false; }
 }
-$('new-service').onclick = () => { $('service-form').reset(); $('service-form').elements.alias.readOnly = false; $('service-form').elements.domain.value = domain; $('service-dialog').showModal(); };
+$('new-service').onclick = () => { $('service-form').reset(); $('service-form').elements.alias.readOnly = false; $('service-form').elements.domain.value = domain; connectionFields(); $('service-dialog').showModal(); };
+$('service-form').elements.transport.onchange = connectionFields;
+$('service-form').elements.scheme.onchange = connectionFields;
+$('device-select').onchange = connectionFields;
 $('account-select').onchange = event => { const account = accounts.find(item => item.id === event.target.value); if (account) { $('service-form').elements.domain.value = account.domain; } };
 $('service-form').onsubmit = async event => {
   event.preventDefault(); const data = Object.fromEntries(new FormData(event.target)); data.port = Number(data.port);
