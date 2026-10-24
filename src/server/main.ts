@@ -6,6 +6,12 @@ import {serviceRegistry} from './services.js';
 
 const config = settings();
 const origin = new URL(required('TUNNEL_PUBLIC_URL')).origin;
+const allowedOrigins = new Set([origin, ...(process.env.TUNNEL_EXTRA_ORIGINS ?? '').split(',').map(value => value.trim()).filter(Boolean).map(value => {
+  const url = new URL(value);
+  const canonical = new URL(origin);
+  if (url.origin !== value || url.hostname !== canonical.hostname || url.protocol !== canonical.protocol) { throw new Error('TUNNEL_EXTRA_ORIGINS 只能包含控制台同协议、同域名的其他端口来源'); }
+  return value;
+})]);
 const login = access(required('TUNNEL_ADMIN_USER'), required('TUNNEL_ADMIN_PASSWORD'), required('TUNNEL_API_TOKEN'));
 const services = serviceRegistry(config, required('TUNNEL_CADDY_ADMIN'));
 const assets: Record<string, [string, string]> = {'/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css']};
@@ -34,7 +40,7 @@ const server = createServer(async (request, response) => {
       response.writeHead(200, {'content-type': `${type}; charset=utf-8`});
       response.end(readFileSync(new URL(`./web/${file}`, import.meta.url))); return;
     }
-    if (request.headers.origin && request.headers.origin !== origin) { send(403, {error: 'Origin rejected'}); return; }
+    if (request.headers.origin && !allowedOrigins.has(request.headers.origin)) { send(403, {error: 'Origin rejected'}); return; }
     if (request.method === 'POST' && path === '/api/login') {
       const data = await body(request);
       const token = login.login(String(data.user ?? ''), String(data.password ?? ''), request.socket.remoteAddress ?? 'unknown');

@@ -46,6 +46,7 @@ docker compose up -d
 
 - 「保存并应用」保存表格后立即发布；逐步显示设备端口、DNS 预检、Caddy 和云记录读回状态。全部 DNS 计划通过后才更新 Caddy。
 - 「连接方式」可选 EasyTier / 直连或 FRP 映射。FRP 使用已经运行的 frps TCP 映射或 frpc STCP visitor：填写映射地址与端口，发布前实测连通性，再配置同一套 DNS、Caddy 和证书；可关联配对设备，但不要求 EasyTier 地址。此入口不安装、修改或删除已有 frps/frpc 配置。
+- 控制台通过额外 HTTPS 端口访问时，在部署 `.env` 的 `TUNNEL_EXTRA_ORIGINS` 配置完整来源（逗号分隔）；只接受与 `TUNNEL_PUBLIC_URL` 同协议、同域名的其他端口，登录和表单提交仍拒绝其他来源。
 - HTTPS FRP 映射需填写真实上游证书的 TLS 主机名，Caddy 使用该名称验证证书；不会因映射地址为回环而关闭 TLS 校验。
 - 仅内网 FRP 必须使用本机 `127.0.0.1` 映射，并将 frps 的 `proxyBindAddr` 或 visitor 的 `bindAddr` 设为 `127.0.0.1`；Linux 宿主网络中会检查实际 TCP 监听，发现通配或非回环监听会阻止发布。每 30 秒恢复路由时也会检查，异常路由会从 Caddy 撤下。公网 FRP 可填写可达的中转主机名与端口。
 - `internal` 不创建公网地址记录，Caddy 使用直接连接的来源 IP 白名单，其他来源返回 404。选有云账号且配置 ACME 时自动申请 DNS 验证证书，否则使用 Caddy 内部 CA。

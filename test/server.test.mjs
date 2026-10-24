@@ -27,6 +27,7 @@ test('standalone authentication, internal publishing, restart persistence and bl
   });
   caddy.listen(0, '127.0.0.1'); await once(caddy, 'listening');
   const env = {...process.env, TUNNEL_DATA: dir, TUNNEL_DOMAIN: 'example.test', TUNNEL_RAW_HOST: 'raw.example.test', TUNNEL_LAN_IP: '127.0.0.1', TUNNEL_ALLOWED_CIDRS: '127.0.0.1/32', TUNNEL_BIND: '127.0.0.1', TUNNEL_PORT: String(port), TUNNEL_PUBLIC_URL: `http://127.0.0.1:${port}`, TUNNEL_ADMIN_USER: 'tester', TUNNEL_ADMIN_PASSWORD: 'test-only-password', TUNNEL_API_TOKEN: 'test-api-token', TUNNEL_CADDY_ADMIN: `http://127.0.0.1:${caddy.address().port}`, TUNNEL_CF_TOKEN: '', TUNNEL_CF_ZONE: ''};
+  env.TUNNEL_EXTRA_ORIGINS = 'http://127.0.0.1:8443';
   let child = spawn(process.execPath, ['dist/server.mjs'], {env, stdio: ['ignore', 'pipe', 'inherit']});
   t.after(async () => { child.kill(); caddy.closeAllConnections(); await new Promise(resolve => caddy.close(resolve)); rmSync(dir, {recursive: true, force: true}); });
   await ready(child);
@@ -34,6 +35,7 @@ test('standalone authentication, internal publishing, restart persistence and bl
   const api = (path, method = 'GET', body, headers = {}) => fetch(base + path, {method, headers: {'content-type': 'application/json', ...headers}, body: body ? JSON.stringify(body) : undefined});
   assert.equal((await api('/api/services')).status, 401);
   assert.equal((await api('/api/login', 'POST', {user: 'tester', password: 'wrong'})).status, 400);
+  assert.equal((await api('/api/login', 'POST', {user:'tester',password:'test-only-password'}, {origin:env.TUNNEL_EXTRA_ORIGINS})).status, 200);
   const login = await api('/api/login', 'POST', {user: 'tester', password: 'test-only-password'});
   assert.equal(login.status, 200);
   assert.match(login.headers.get('set-cookie'), /HttpOnly; SameSite=Strict/);
