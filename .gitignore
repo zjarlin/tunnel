@@ -3,3 +3,6 @@
 .env
 /data/
 /release/
+
+/dist/tunnel.aio-plugin
+/dist/aio-manifest.toml

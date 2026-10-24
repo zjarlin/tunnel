@@ -1,23 +1,15 @@
 const words = {
-  subtitle: '服务入口管理', logout: '退出登录', welcome: '连接你的服务', account: '账号', password: '密码', login: '登录',
-  services: '服务管理', apply: '应用配置', alias: '域名别名', target: '目标主机', port: '端口', scheme: '协议', visibility: '访问范围',
-  internal: '仅内网', public: '公网', note: '备注', save: '保存', domain: '域名', actions: '操作', empty: '还没有服务，填写上方表格开始登记。',
-  integration: 'API / AIO sidecar', edit: '编辑', remove: '删除', removeConfirm: '删除此服务登记？应用配置后生效。',
-  saved: '已保存，点击「应用配置」发布。', applied: '配置已应用', failed: '请求失败', applying: '正在应用…',
+  subtitle:'服务入口管理', logout:'退出登录', welcome:'连接你的服务', account:'账号', password:'密码', login:'登录', services:'服务入口', apply:'应用配置', alias:'域名别名', target:'目标主机 / 子网地址', port:'端口', scheme:'协议', visibility:'访问范围', internal:'仅内网', public:'公网', note:'备注', save:'保存', domain:'域名', actions:'操作', empty:'还没有服务，点击「添加服务」开始。', edit:'编辑', remove:'删除', removeConfirm:'删除服务并撤下代理和本系统管理的 DNS？', applied:'配置已应用', failed:'请求失败', applying:'正在发布配置…', devices:'配对设备', device:'设备', accounts:'DNS 账号', dnsAccount:'DNS 账号', add:'添加服务', service:'服务配置', close:'关闭', suffix:'域名后缀', saveApply:'保存并应用', status:'配对状态', meshAddress:'EasyTier 地址 / 主机名', devicesEmpty:'当前账号还没有配对设备。请先在设备助手完成配对。', accountId:'账号标识', label:'名称', provider:'厂商', zone:'Zone ID（可留空自动查询）', rawHost:'灰云入口', direct:'入口直接可达的主机', defaultAccount:'默认账号 / 仅内网', online:'在线', offline:'离线', configured:'凭据已配置', saved:'已保存', success:'成功', running:'发布中', configuredHost:'设备本机', bindRequired:'未绑定地址', revoked:'设备已撤销或不可见', accountSaved:'DNS 账号已加密保存', pending:'等待发布',
 };
-document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = words[node.dataset.i18n]; });
 const $ = id => document.getElementById(id);
+document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = words[node.dataset.i18n]; });
+document.querySelectorAll('[data-close]').forEach(node => { node.onclick = () => $(node.dataset.close).close(); });
 const hosted = Boolean(window.aioPlugin);
-
-function message(text, error = false) {
-  $('message').textContent = text;
-  $('message').className = error ? 'error' : 'success';
-  $('message').hidden = false;
-}
-
+let devices = [], accounts = [], domain = '', publishing = false;
+function message(text, error = false) { $('message').textContent = text; $('message').className = error ? 'error' : 'success'; $('message').hidden = false; }
 async function api(path, method = 'GET', data) {
   if (hosted) { return window.aioPlugin.json(method, path, data); }
-  const response = await fetch(path, {method, credentials: 'same-origin', headers: data === undefined ? {} : {'content-type': 'application/json'}, body: data === undefined ? undefined : JSON.stringify(data)});
+  const response = await fetch(path, {method, credentials:'same-origin', headers:data === undefined ? {} : {'content-type':'application/json'}, body:data === undefined ? undefined : JSON.stringify(data)});
   const value = await response.json();
   if (!response.ok) {
     if (response.status === 401) { $('login').hidden = false; $('workspace').hidden = true; $('logout').hidden = true; }
@@ -25,55 +17,73 @@ async function api(path, method = 'GET', data) {
   }
   return value;
 }
-
-async function refresh() {
-  const {items, domain} = await api('/api/services');
-  $('login').hidden = true; $('workspace').hidden = false; $('logout').hidden = hosted;
-  $('domain').textContent = domain;
-  $('rows').replaceChildren(); $('empty').hidden = items.length > 0;
-  for (const item of items) {
-    const row = document.createElement('tr');
-    const values = [`${item.alias}.${domain}`, `${item.scheme}://${item.host}:${item.port}`, words[item.visibility], item.note];
-    for (const [index, value] of values.entries()) {
-      const cell = document.createElement('td'); cell.textContent = value;
-      if (index === 2) { cell.className = `scope ${item.visibility}`; }
-      row.append(cell);
-    }
-    const actions = document.createElement('td'); actions.className = 'actions';
-    const edit = document.createElement('button'); edit.textContent = words.edit;
-    edit.onclick = () => {
-      for (const key of ['alias', 'host', 'port', 'scheme', 'visibility', 'note']) { $('service-form').elements[key].value = item[key] ?? ''; }
-      $('service-form').elements.host.focus();
-    };
-    const remove = document.createElement('button'); remove.textContent = words.remove;
-    remove.onclick = async () => {
-      if (!confirm(words.removeConfirm)) { return; }
-      try { await api(`/api/services/${encodeURIComponent(item.alias)}`, 'DELETE'); await refresh(); message(words.saved); }
-      catch (error) { message(error.message, true); }
-    };
-    actions.append(edit, remove); row.append(actions); $('rows').append(row);
-  }
+function option(value, text) { const node = document.createElement('option'); node.value = value; node.textContent = text; return node; }
+function button(text, action) { const node = document.createElement('button'); node.type = 'button'; node.textContent = text; node.onclick = action; return node; }
+function cells(values) { const row = document.createElement('tr'); for (const value of values) { const cell = document.createElement('td'); cell.textContent = value; row.append(cell); } return row; }
+function showStatus(status) {
+  $('publication').textContent = status ? `${new Date(status.at).toLocaleString()} · ${(status.steps || []).map(item => `${item.step}：${words[item.state] || item.state}${item.detail ? `（${item.detail}）` : ''}`).join(' → ')}` : words.pending;
+  $('publication').className = status?.state === 'failed' ? 'error' : '';
 }
-
-$('login-form').onsubmit = async event => {
-  event.preventDefault();
-  try { await api('/api/login', 'POST', Object.fromEntries(new FormData(event.target))); event.target.reset(); await refresh(); $('message').hidden = true; }
-  catch (error) { message(error.message, true); }
-};
+async function refresh() {
+  const [registry, deviceList, accountList] = await Promise.all([api('/api/services'), api('/api/devices'), api('/api/accounts')]);
+  devices = deviceList.items; accounts = accountList.items; domain = registry.domain;
+  $('login').hidden = true; $('workspace').hidden = false; $('logout').hidden = hosted; $('domain').textContent = domain;
+  $('rows').replaceChildren(); $('empty').hidden = registry.items.length > 0;
+  $('device-select').replaceChildren(option('', words.direct), ...devices.map(item => option(item.id, `${item.label} · ${words[item.status] || item.status}${item.address ? '' : ` · ${words.bindRequired}`}`)));
+  $('account-select').replaceChildren(option('', words.defaultAccount), ...accounts.map(item => option(item.id, `${item.label} · ${item.domain}`)));
+  for (const item of registry.items) {
+    const device = devices.find(entry => entry.id === item.deviceId);
+    const row = cells([`${item.alias}.${item.domain || domain}`, item.deviceId ? device?.label || words.revoked : words.direct, `${item.scheme}://${item.host || device?.address || words.configuredHost}:${item.port}`, words[item.visibility], item.note]);
+    const actions = document.createElement('td'); actions.className = 'actions';
+    actions.append(button(words.edit, () => {
+      const form = $('service-form'); form.reset();
+      for (const key of ['alias','domain','deviceId','accountId','host','port','scheme','visibility','note']) { form.elements[key].value = item[key] ?? (key === 'domain' ? domain : ''); }
+      form.elements.alias.readOnly = true; $('service-dialog').showModal();
+    }), button(words.remove, async () => {
+      if (!confirm(words.removeConfirm)) { return; }
+      try { await api(`/api/services/${encodeURIComponent(item.alias)}`, 'DELETE'); await refresh(); await publish(); } catch (error) { message(error.message, true); }
+    })); row.append(actions); $('rows').append(row);
+  }
+  showStatus(registry.status);
+}
+async function publish() {
+  if (publishing) { return; }
+  publishing = true; $('apply').disabled = true; message(words.applying);
+  try {
+    await api('/api/publications', 'POST', {});
+    for (let attempt = 0; attempt < 150; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      const status = await api('/api/publications'); showStatus(status);
+      if (status?.state === 'failed') { throw new Error(status.steps.at(-1)?.detail || words.failed); }
+      if (status?.routes) { message(`${words.applied} · ${status.routes.length}`); return; }
+    }
+    throw new Error('发布仍在处理，请查看发布状态');
+  } finally { publishing = false; $('apply').disabled = false; }
+}
+$('new-service').onclick = () => { $('service-form').reset(); $('service-form').elements.alias.readOnly = false; $('service-form').elements.domain.value = domain; $('service-dialog').showModal(); };
+$('account-select').onchange = event => { const account = accounts.find(item => item.id === event.target.value); if (account) { $('service-form').elements.domain.value = account.domain; } };
 $('service-form').onsubmit = async event => {
-  event.preventDefault();
-  const data = Object.fromEntries(new FormData(event.target)); data.port = Number(data.port);
-  try { await api('/api/services', 'PUT', data); event.target.reset(); await refresh(); message(words.saved); }
-  catch (error) { message(error.message, true); }
+  event.preventDefault(); const data = Object.fromEntries(new FormData(event.target)); data.port = Number(data.port);
+  try { await api('/api/services', 'PUT', data); $('service-dialog').close(); await refresh(); await publish(); } catch (error) { message(error.message, true); }
 };
-$('apply').onclick = async () => {
-  $('apply').disabled = true; message(words.applying);
-  try { const report = await api('/api/apply', 'POST', {}); message(`${words.applied} · ${report.routes.length}`); }
-  catch (error) { message(error.message, true); }
-  finally { $('apply').disabled = false; }
+$('apply').onclick = () => publish().catch(error => message(error.message, true));
+$('devices-button').onclick = async () => {
+  try {
+    await refresh(); $('device-rows').replaceChildren(); $('devices-empty').hidden = devices.length > 0;
+    for (const device of devices) {
+      const row = cells([device.label, words[device.status] || device.status]); const cell = document.createElement('td'); const address = document.createElement('input'); address.value = device.address || ''; address.setAttribute('aria-label', `${device.label} ${words.meshAddress}`); cell.append(address); row.append(cell);
+      const actions = document.createElement('td'); actions.append(button(words.save, async () => { try { await api('/api/devices', 'PUT', {id:device.id, address:address.value}); message(words.saved); await refresh(); } catch (error) { message(error.message, true); } })); row.append(actions); $('device-rows').append(row);
+    }
+    $('devices-dialog').showModal();
+  } catch (error) { message(error.message, true); }
 };
-$('logout').onclick = async () => {
-  try { await api('/api/logout', 'POST', {}); $('workspace').hidden = true; $('login').hidden = false; $('logout').hidden = true; }
-  catch (error) { message(error.message, true); }
+$('accounts-button').onclick = () => {
+  $('account-form').reset(); $('account-list').replaceChildren();
+  for (const account of accounts) { $('account-list').append(button(`${account.label} · ${account.domain} · ${words.configured}`, () => { $('account-form').reset(); for (const key of ['id','label','provider','domain','zone','rawHost']) { $('account-form').elements[key].value = account[key] || ''; } })); }
+  $('accounts-dialog').showModal();
 };
+$('account-form').elements.domain.oninput = event => { $('account-form').elements.rawHost.value = `raw.${event.target.value}`; };
+$('account-form').onsubmit = async event => { event.preventDefault(); try { await api('/api/accounts', 'PUT', Object.fromEntries(new FormData(event.target))); event.target.reset(); $('accounts-dialog').close(); await refresh(); message(words.accountSaved); } catch (error) { message(error.message, true); } };
+$('login-form').onsubmit = async event => { event.preventDefault(); try { await api('/api/login', 'POST', Object.fromEntries(new FormData(event.target))); event.target.reset(); await refresh(); $('message').hidden = true; } catch (error) { message(error.message, true); } };
+$('logout').onclick = async () => { try { await api('/api/logout', 'POST', {}); $('workspace').hidden = true; $('login').hidden = false; $('logout').hidden = true; } catch (error) { message(error.message, true); } };
 refresh().catch(error => { if (hosted) { message(error.message, true); } });

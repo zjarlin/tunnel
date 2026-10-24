@@ -65,7 +65,7 @@ test('AIO sidecar rejects wrong tenant and forwards only authorized service requ
   const child = spawn(process.execPath, ['dist/sidecar.mjs'], {env: {...process.env, AIO_PLUGIN_CONFIG: join(dir, 'host.json'), AIO_PLUGIN_SOCKET: socket, TUNNEL_URL: `http://127.0.0.1:${upstream.address().port}`, TUNNEL_API_TOKEN: 'test-upstream-token', TUNNEL_AIO_TENANT: 'test-tenant', TUNNEL_AIO_USERS: 'test-admin'}, stdio: ['ignore', 'pipe', 'inherit']});
   t.after(async () => { child.kill(); upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); rmSync(dir, {recursive: true, force: true}); });
   const call = (path, headers = {}) => new Promise((resolve, reject) => { const req = request({socketPath: socket, path, headers}, res => { let body = ''; res.on('data', chunk => { body += chunk; }); res.on('end', () => resolve({status: res.statusCode, body: JSON.parse(body)})); }); req.on('error', reject); req.end(); });
-  for (let attempt = 0; attempt < 50; attempt++) { try { await call('/health'); break; } catch { await new Promise(resolve => setTimeout(resolve, 20)); } }
+  await ready(child);
   assert.equal((await call('/aio/describe')).body.pages[0].id, 'tunnel');
   assert.equal((await call('/api/services')).status, 403);
   const auth = {'x-aio-token': 'test-ingress-token', 'x-aio-tenant-id': 'test-tenant', 'x-aio-user-id': 'test-admin'};

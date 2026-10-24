@@ -1,71 +1,115 @@
-import {existsSync, readFileSync, writeFileSync} from 'node:fs';
-import {isIP} from 'node:net';
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import type {Alias, PortalSettings} from '../config/index.js';
 import {readAliases, upsert, remove} from '../portal/registry.js';
-import {render} from '../portal/render.js';
 import {dnsProvider} from '../portal/providers.js';
-import {publish} from './caddy.js';
+import {publish, serviceDomain} from './caddy.js';
+import {deviceDirectory, probe, validHost} from './devices.js';
+import {accounts} from './accounts.js';
+import {dnsPlan} from './cloud-dns.js';
 
 export function validate(value: Record<string, unknown>): Alias {
-  const {alias, host, port, scheme, visibility, note} = value;
-  if (typeof alias !== 'string' || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(alias)) { throw new Error('Invalid alias'); }
-  if (typeof host !== 'string' || !(isIP(host) === 4 || /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(host))) { throw new Error('Invalid target host'); }
-  if (!Number.isInteger(port) || Number(port) < 1 || Number(port) > 65535) { throw new Error('Invalid port'); }
-  if (scheme !== 'http' && scheme !== 'https') { throw new Error('Invalid scheme'); }
-  if (visibility !== 'internal' && visibility !== 'public') { throw new Error('Invalid visibility'); }
-  if (typeof note !== 'string' || note.length > 300) { throw new Error('Invalid note'); }
-  return {alias, host, port: Number(port), scheme, visibility, note, authorizedBy: visibility === 'public' ? 'console-admin' : undefined};
+  const {alias, port, scheme, visibility, note} = value;
+  const host = String(value.host || '');
+  const deviceId = String(value.deviceId || '');
+  const accountId = String(value.accountId || '');
+  const domain = String(value.domain || '');
+  if (typeof alias !== 'string' || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(alias)) { throw new Error('域名别名无效'); }
+  if ((!deviceId || host) && !validHost(host)) { throw new Error('目标主机无效'); }
+  if (domain && !/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/.test(domain)) { throw new Error('域名后缀无效'); }
+  if (!Number.isInteger(port) || Number(port) < 1 || Number(port) > 65535) { throw new Error('端口必须在 1～65535 之间'); }
+  if (scheme !== 'http' && scheme !== 'https') { throw new Error('协议无效'); }
+  if (visibility !== 'internal' && visibility !== 'public') { throw new Error('访问范围无效'); }
+  if (typeof note !== 'string' || note.length > 300) { throw new Error('备注长度超过限制'); }
+  return {alias, host, port: Number(port), scheme, visibility, note, ...(domain ? {domain} : {}), ...(deviceId ? {deviceId} : {}), ...(accountId ? {accountId} : {}), authorizedBy: visibility === 'public' ? 'console-admin' : undefined};
 }
 
 export function serviceRegistry(settings: PortalSettings, socket: string) {
   let active = false;
-  const assertIdle = () => { if (active) { throw new Error('An apply operation is already running'); } };
+  const root = settings.portal.root;
+  const devices = deviceDirectory(root);
+  const credentials = accounts(root);
+  const publishedFile = `${root}/published.json`;
+  const statusFile = `${root}/last-apply.json`;
+  const previous = (): Alias[] => existsSync(publishedFile) ? JSON.parse(readFileSync(publishedFile, 'utf8')) : [];
+  const assertIdle = () => { if (active) { throw new Error('配置正在发布，请稍后再试'); } };
+  async function resolve(item: Alias): Promise<Alias> {
+    if (!item.deviceId) { return item; }
+    const address = await devices.resolve(item.deviceId);
+    // 留空表示设备本机；显式目标表示已通过 EasyTier 子网路由到达的服务。
+    if (['127.0.0.1', 'localhost'].includes(item.host)) { throw new Error('设备服务留空目标主机即可，不能把远端 loopback 当作入口本机'); }
+    return {...item, host: item.host || address};
+  }
   return {
+    devices, accounts: credentials,
+    status: () => existsSync(statusFile) ? JSON.parse(readFileSync(statusFile, 'utf8')) : null,
     list: () => readAliases(settings),
     save: (value: Record<string, unknown>) => {
       assertIdle();
       const entry = validate(value);
-      const name = `${entry.alias}.${settings.suffix}`;
-      if ([new URL(process.env.TUNNEL_PUBLIC_URL ?? 'http://localhost').hostname, process.env.TUNNEL_RAW_HOST].includes(name)) {
-        throw new Error('The console and raw entry hostnames are reserved');
-      }
+      const name = serviceDomain(settings, entry);
+      if ([new URL(process.env.TUNNEL_PUBLIC_URL ?? 'http://localhost').hostname, process.env.TUNNEL_RAW_HOST].includes(name)) { throw new Error('控制台与灰云入口不能被服务覆盖'); }
+      if (entry.accountId && credentials.get(entry.accountId).domain !== (entry.domain || settings.suffix)) { throw new Error('域名后缀与 DNS 账号不匹配'); }
+      const old = readAliases(settings).find(item => item.alias === entry.alias);
+      if (old && (old.domain !== entry.domain || old.accountId !== entry.accountId)) { throw new Error('迁移域名或 DNS 账号前请先删除旧服务并应用'); }
       return upsert(settings, entry);
     },
     remove: (alias: string) => { assertIdle(); return remove(settings, alias); },
     async recover() {
-      const file = `${settings.portal.root}/published.json`;
-      if (active || !existsSync(file)) { return; }
-      active = true;
-      try { await publish(settings, JSON.parse(readFileSync(file, 'utf8')), socket); }
-      finally { active = false; }
-    },
-    async apply() {
-      if (active) { throw new Error('An apply operation is already running'); }
+      if (active || !existsSync(publishedFile)) { return; }
       active = true;
       try {
-        const aliases = readAliases(settings);
-        // 所有 DNS 计划先通过，才发布任何路由；内网服务不调用云 DNS。
-        const entries = await Promise.all(aliases.map(async item => {
-          const provider = dnsProvider(settings, item);
-          return {item, provider, plan: item.visibility === 'public' ? await provider.plan(item, settings) : null};
-        }));
-        const blocked = entries.filter(entry => entry.plan?.blocked);
-        if (blocked.length) { throw new Error(blocked.map(entry => `${entry.item.alias}: ${entry.plan?.warnings.join('; ')}`).join('\n')); }
+        const ids = new Set((await devices.list()).map(device => device.id));
+        // 撤销配对后撤掉路由；网络暂时离线不销毁登记。
+        const aliases = previous().filter(item => !item.deviceId || ids.has(item.deviceId));
         await publish(settings, aliases, socket);
-        render(settings);
-        const verified = [];
-        for (const {item, provider, plan} of entries) {
-          if (plan) {
-            await provider.apply(item, settings, plan);
-            const check = await provider.verify(item, settings);
-            if (!check.ok) { throw new Error(`${item.alias}: ${check.detail}`); }
+      } finally { active = false; }
+    },
+    async apply() {
+      assertIdle(); active = true;
+      const steps: Array<{step: string; state: string; detail?: string}> = [];
+      function record(step: string, state: string, detail?: string) {
+        steps.push({step, state, ...(detail ? {detail} : {})});
+        writeFileSync(statusFile, JSON.stringify({at: Date.now(), state, steps}), {mode: 0o600});
+      }
+      try {
+        record('准备发布', 'running');
+        const aliases = await Promise.all(readAliases(settings).map(resolve));
+        if (process.env.TUNNEL_VERIFY_UPSTREAM === '1') { await Promise.all(aliases.map(item => probe(item.host, item.port))); }
+        record('设备与目标端口', 'success');
+        const removed = previous().filter(old => !aliases.some(item => item.alias === old.alias));
+        const plans: Array<() => Promise<void>> = [];
+        for (const item of [...aliases, ...removed.map(item => ({...item, visibility: 'internal' as const}))]) {
+          if (item.accountId) {
+            const plan = await dnsPlan(credentials.get(item.accountId), serviceDomain(settings, item), item.visibility!);
+            plans.push(() => plan.apply());
+          } else if (item.visibility === 'public') {
+            if (item.domain && item.domain !== settings.suffix) { throw new Error('请选择该域名的 DNS 账号'); }
+            const provider = dnsProvider(settings, item);
+            const plan = await provider.plan(item, settings);
+            if (plan.blocked) { throw new Error(plan.warnings.join('; ')); }
+            plans.push(async () => {
+              await provider.apply(item, settings, plan);
+              if (!(await provider.verify(item, settings)).ok) { throw new Error(`${item.alias}: DNS 读回校验失败`); }
+            });
           }
-          verified.push(item.alias);
         }
-        const report = {at: new Date().toISOString(), routes: verified, dns: 'Internal DNS fragment generated; resolver reload is managed by the host'};
-        writeFileSync(`${settings.portal.root}/published.json`, JSON.stringify(aliases), {mode: 0o600});
-        writeFileSync(`${settings.portal.root}/last-apply.json`, JSON.stringify(report), {mode: 0o600});
+        record('DNS 预检', 'success');
+        // 先收紧代理策略，再进行 DNS 变更，公网转内网时立即拒绝外部请求。
+        await publish(settings, aliases, socket);
+        writeFileSync(publishedFile, JSON.stringify(aliases), {mode: 0o600});
+        record('Caddy 路由与访问范围', 'success');
+        for (const plan of plans) { await plan(); }
+        record('云 DNS 写入与读回', 'success');
+        mkdirSync(`${root}/dns`, {recursive: true});
+        const hosts = aliases.map(item => `${settings.lanIp} ${serviceDomain(settings, item)}`).join('\n');
+        writeFileSync(`${root}/dns/tunnel.hosts`, `${hosts}\n`, {mode: 0o644});
+        record('内网 DNS 文件', 'success');
+        const report = {at: Date.now(), state: 'success', routes: aliases.map(item => item.alias), steps, dns: '内网解析由主机监听器加载'};
+        writeFileSync(statusFile, JSON.stringify(report), {mode: 0o600});
         return report;
+      } catch (error) {
+        record('发布', 'failed', error instanceof Error ? error.message : '配置发布失败');
+        throw error;
       } finally { active = false; }
     },
   };

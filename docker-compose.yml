@@ -5,6 +5,8 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME is required}
     restart: unless-stopped
     network_mode: host
+    extra_hosts:
+      - "${TUNNEL_DATABASE_HOST:?}:${TUNNEL_DATABASE_ADDRESS:?}"
     working_dir: /app
     command: [node, server.mjs]
     env_file: .env

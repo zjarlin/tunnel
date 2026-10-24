@@ -98,6 +98,9 @@ export type PortalSettings = {
  */
 export type Alias = {
   alias: string;
+  domain?: string;
+  deviceId?: string;
+  accountId?: string;
   host: string;
   port: number;
   scheme: 'http' | 'https';

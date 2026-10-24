@@ -1,6 +1,6 @@
 # Tunnel
 
-独立部署的服务入口控制台。通过表格登记域名别名、目标主机、端口和访问范围，复用 Caddy 与现有 EasyTier 网络。AIO 可通过 sidecar 接入同一个 API；独立服务不依赖 AIO 或 PostgreSQL。
+独立部署的服务入口控制台。通过表格登记域名别名、目标主机、端口和访问范围，复用 Caddy 与现有 EasyTier 网络。AIO 可通过 sidecar 接入同一个 API；独立控制台可单独运行；启用配对设备列表时只读接入 AIO 的共享 PostgreSQL。
 
 本项目从 [aio-plugin-portal](https://github.com/org-aio/aio-plugin-portal) 保留 Git 历史演进而来。DNS provider 与 CLI 代码在这里继续维护；AIO 适配只承担身份校验和 API 转发。
 
@@ -44,13 +44,13 @@ docker compose up -d
 
 ## 服务管理
 
-- 「保存」只更新草稿；「应用配置」才发布。全部公网 DNS 计划通过后才更新 Caddy。
+- 「保存并应用」保存表格后立即发布；逐步显示设备端口、DNS 预检、Caddy 和云记录读回状态。全部 DNS 计划通过后才更新 Caddy。
 - `internal` 不创建公网 DNS，Caddy 使用直接连接的来源 IP 白名单，其他来源返回 404。证书使用 Caddy 内部 CA，客户端须信任该 CA。
 - `public` 创建 DNS-only CNAME 指向 `TUNNEL_RAW_HOST`。Caddy 负责后续 ACME，**DNS 写入成功不等于证书已经签发或公网已可达**。
 - 内网 DNS 片段写入 `data/dns/tunnel.conf`，需要主机解析器加载。应用不会擅自修改路由器 DHCP 或 DNS。
-- Caddy 只修改 `tunnel-services` 与 `tunnel-internal-certificates` 两个命名资源，保留其他服务；Caddy 热加载后最多 30 秒恢复上次成功发布的数据，草稿不会自动发布。
-- 删除登记后应用会移除代理路由。已有公网 DNS 不会自动删除，避免误删其他系统管理的记录；公网转内网时也应由域名管理员检查旧入口。
-- 目标主机可填写已有 EasyTier 节点的地址或可解析名称。本版复用现有网络，不安装 EasyTier，不提供设备配对协议或公网中继。
+- Caddy 只修改 `tunnel-services-*` 与 `tunnel-internal-certificates` 命名资源，保留其他服务；Caddy 热加载后最多 30 秒恢复上次成功发布的数据，草稿不会自动发布。
+- 配置 DNS 账号的服务在删除或公网转内网时移除本系统管理的 DNS 记录；遇到其他系统的记录会阻止发布。旧版默认 Cloudflare 配置需人工确认旧记录归属。
+- 选择 AIO 已配对设备并绑定 EasyTier 地址，支持设备本机服务和通过已有子网路由可达的服务；复用现役 EasyTier，不安装第二套网络或配对协议。
 
 外部 DNS API 无法与 Caddy 构成跨系统事务；发布过程中任何错误都会返回失败，已完成的步骤可能已生效，修正后再次应用即可协调。
 
@@ -64,10 +64,12 @@ docker compose up -d
 node dist/cli.mjs --help
 ```
 
-兼容原来的 `AIO_PORTAL_HOME` 配置与 CLI。CLI 可选择 Cloudflare、腾讯 DNSPod、华为云 IAM token、本地 dnsmasq。**当前 Web 控制台的公网适配为 Cloudflare；华为 AK/SK 与腾讯 SecretId/SecretKey 未在本版提供。**
+Web 控制台支持 Cloudflare API Token、华为云 AK/SK、腾讯云 SecretId/SecretKey；两家国内云使用官方 SDK 签名。凭据以 AES-256-GCM 加密保存，页面只显示配置状态。公网别名创建 DNS-only CNAME 指向唯一 `raw.<域名>` A 记录，内网服务不创建公网记录。CLI 保留原有 provider 配置。
 
 ## 验证与发布
 
 `npm test` 执行 CLI、HTTP 登录与持久化、内网策略、被阻断的公网发布和 AIO sidecar 身份测试。GitHub Actions 在 main 推送后执行同一命令并生成 `tunnel.tar.gz`；部署前用实际 Caddy 和入口验证。
 
 仅将服务密码保存在部署 `.env`，不提交到 Git。项目提供 MIT 授权。
+
+多个 Caddy 共享 admin 地址时，设置 `TUNNEL_CADDY_LISTENER=*` 和实际 `TUNNEL_CADDY_INSTANCES`，每个实例读回 ETag 后独立更新。接管已有站点只允许 `TUNNEL_ADOPT_DOMAINS` 显式列出的单域路由，并要求上游完全相同。
