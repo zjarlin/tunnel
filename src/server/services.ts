@@ -8,6 +8,7 @@ import {accounts} from './accounts.js';
 import {dnsPlan} from './cloud-dns.js';
 import {certificates} from './certificates.js';
 import {verifyPrivateFrpListener} from './frp.js';
+import {tcpCatalog} from './tcp-catalog.js';
 
 export function validate(value: Record<string, unknown>): Alias {
   const {alias, port, scheme, visibility, note} = value;
@@ -46,6 +47,10 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
   const statusFile = `${root}/last-apply.json`;
   const previous = (): Alias[] => existsSync(publishedFile) ? JSON.parse(readFileSync(publishedFile, 'utf8')) : [];
   const assertIdle = () => { if (active) { throw new Error('配置正在发布，请稍后再试'); } };
+  const tcp = () => tcpCatalog(process.env.TUNNEL_TCP_CATALOG);
+  const assertHttp = (alias: unknown) => {
+    if (tcp().some(item => item.alias === alias)) { throw new Error('此 TCP 入口由现有内网代理管理，不能在 HTTP 表单中修改或删除'); }
+  };
   async function resolve(item: Alias): Promise<Alias> {
     if (item.transport === 'frp') {
       if (item.deviceId && !(await devices.list()).some(device => device.id === item.deviceId)) { throw new Error('设备未配对或已撤销'); }
@@ -62,9 +67,15 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
   return {
     devices, accounts: credentials, assertIdle,
     status: () => existsSync(statusFile) ? JSON.parse(readFileSync(statusFile, 'utf8')) : null,
-    list: () => readAliases(settings),
+    list: () => {
+      const aliases = readAliases(settings);
+      const endpoints = tcp();
+      if (aliases.some(item => endpoints.some(endpoint => endpoint.alias === item.alias))) { throw new Error('HTTP 与 TCP 服务别名冲突，请检查入口配置'); }
+      return [...aliases, ...endpoints].sort((a, b) => a.alias.localeCompare(b.alias));
+    },
     save: (value: Record<string, unknown>) => {
       assertIdle();
+      assertHttp(value.alias);
       const old = readAliases(settings).find(item => item.alias === value.alias);
       const entry = validate({...value, dnsMode: value.dnsMode ?? old?.dnsMode, transport: value.transport ?? old?.transport, tlsServerName: value.scheme === 'https' ? value.tlsServerName ?? old?.tlsServerName : ''});
       const name = serviceDomain(settings, entry);
@@ -74,7 +85,7 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
       if (old && (old.domain !== entry.domain || old.accountId !== entry.accountId)) { throw new Error('迁移域名或 DNS 账号前请先删除旧服务并应用'); }
       return upsert(settings, entry);
     },
-    remove: (alias: string) => { assertIdle(); return remove(settings, alias); },
+    remove: (alias: string) => { assertIdle(); assertHttp(alias); return remove(settings, alias); },
     async recover() {
       if (active || !existsSync(publishedFile)) { return; }
       active = true;

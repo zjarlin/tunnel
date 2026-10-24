@@ -21,7 +21,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "npm run check && npm run build && node --test",
+    "test": "npm run check && npm run build && node --test test/*.test.mjs",
     "prepack": "npm run build",
     "prepare": "node scripts/build.mjs",
     "start": "node dist/server.mjs",

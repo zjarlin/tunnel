@@ -4,6 +4,7 @@ const words = {
 const $ = id => document.getElementById(id);
 Object.assign(words, {dnsMode:'DNS 方式', managed:'自动管理 DNS', existing:'保留现有公网 DNS', removeExistingConfirm:'删除本地登记与代理？原公网入口和 DNS 会保留，需要在原入口单独关闭。'});
 Object.assign(words, {transport:'连接方式', easytier:'EasyTier / 直连', frp:'FRP 映射', frpHost:'FRP 映射地址', frpPort:'FRP 映射端口', frpPlaceholder:'127.0.0.1 或中转主机名', devicePlaceholder:'留空使用设备本机', frpRemoveConfirm:'已有 FRP 映射仍由原系统管理，需要在原系统单独关闭。', tlsServerName:'上游 TLS 主机名'});
+Object.assign(words, {copy:'复制地址', copied:'连接地址已复制', open:'打开', tcp:'TCP', managedTcp:'现有 TCP 入口', serviceCount:'项服务', refresh:'刷新'});
 document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = words[node.dataset.i18n]; });
 document.querySelectorAll('[data-close]').forEach(node => { node.onclick = () => $(node.dataset.close).close(); });
 const hosted = Boolean(window.aioPlugin);
@@ -45,14 +46,24 @@ function connectionFields() {
 async function refresh() {
   const [registry, deviceList, accountList] = await Promise.all([api('/api/services'), api('/api/devices'), api('/api/accounts')]);
   devices = deviceList.items; accounts = accountList.items; domain = registry.domain;
-  $('login').hidden = true; $('workspace').hidden = false; $('logout').hidden = hosted; $('domain').textContent = domain;
+  $('login').hidden = true; $('workspace').hidden = false; $('logout').hidden = hosted; $('domain').textContent = `${domain} · ${registry.items.length} ${words.serviceCount}`;
   $('rows').replaceChildren(); $('empty').hidden = registry.items.length > 0;
   $('device-select').replaceChildren(option('', words.direct), ...devices.map(item => option(item.id, `${item.label} · ${words[item.status] || item.status}${item.address ? '' : ` · ${words.bindRequired}`}`)));
   $('account-select').replaceChildren(option('', words.defaultAccount), ...accounts.map(item => option(item.id, `${item.label} · ${item.domain}`)));
   for (const item of registry.items) {
     const device = devices.find(entry => entry.id === item.deviceId);
-    const row = cells([`${item.alias}.${item.domain || domain}`, item.deviceId ? device?.label || words.revoked : words.direct, words[item.transport || 'easytier'], `${item.scheme}://${item.host || device?.address || words.configuredHost}:${item.port}`, words[item.visibility], words[item.dnsMode || 'managed'], item.note]);
+    const hostname = `${item.alias}.${item.domain || domain}`;
+    const endpoint = item.scheme === 'tcp' ? `${hostname}:${item.port}` : `https://${hostname}/`;
+    const row = cells([item.scheme === 'tcp' ? endpoint : hostname, item.deviceLabel || (item.deviceId ? device?.label || words.revoked : words.direct), item.scheme === 'tcp' ? words.tcp : words[item.transport || 'easytier'], `${item.scheme}://${item.host || device?.address || words.configuredHost}:${item.port}`, words[item.visibility], words[item.dnsMode || 'managed'], item.note]);
     const actions = document.createElement('td'); actions.className = 'actions';
+    actions.append(button(words.copy, async () => {
+      try { await navigator.clipboard.writeText(endpoint); message(words.copied); } catch (error) { message(`${endpoint} · ${error.message}`, true); }
+    }));
+    if (item.readOnly) {
+      const label = document.createElement('span'); label.textContent = words.managedTcp; actions.append(label);
+      row.append(actions); $('rows').append(row); continue;
+    }
+    const link = document.createElement('a'); link.href = endpoint; link.textContent = words.open; link.target = '_blank'; link.rel = 'noopener noreferrer'; actions.append(link);
     actions.append(button(words.edit, () => {
       const form = $('service-form'); form.reset();
       for (const key of ['alias','domain','deviceId','accountId','dnsMode','transport','tlsServerName','host','port','scheme','visibility','note']) { form.elements[key].value = item[key] ?? ({domain, dnsMode:'managed', transport:'easytier'}[key] || ''); }
@@ -89,6 +100,7 @@ $('service-form').onsubmit = async event => {
   try { await api('/api/services', 'PUT', data); $('service-dialog').close(); await refresh(); await publish(); } catch (error) { message(error.message, true); }
 };
 $('apply').onclick = () => publish().catch(error => message(error.message, true));
+$('refresh').onclick = () => refresh().catch(error => message(error.message, true));
 $('devices-button').onclick = async () => {
   try {
     await refresh(); $('device-rows').replaceChildren(); $('devices-empty').hidden = devices.length > 0;

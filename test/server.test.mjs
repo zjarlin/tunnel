@@ -28,6 +28,8 @@ test('standalone authentication, internal publishing, restart persistence and bl
   caddy.listen(0, '127.0.0.1'); await once(caddy, 'listening');
   const env = {...process.env, TUNNEL_DATA: dir, TUNNEL_DOMAIN: 'example.test', TUNNEL_RAW_HOST: 'raw.example.test', TUNNEL_LAN_IP: '127.0.0.1', TUNNEL_ALLOWED_CIDRS: '127.0.0.1/32', TUNNEL_BIND: '127.0.0.1', TUNNEL_PORT: String(port), TUNNEL_PUBLIC_URL: `http://127.0.0.1:${port}`, TUNNEL_ADMIN_USER: 'tester', TUNNEL_ADMIN_PASSWORD: 'test-only-password', TUNNEL_API_TOKEN: 'test-api-token', TUNNEL_CADDY_ADMIN: `http://127.0.0.1:${caddy.address().port}`, TUNNEL_CF_TOKEN: '', TUNNEL_CF_ZONE: ''};
   env.TUNNEL_EXTRA_ORIGINS = 'http://127.0.0.1:8443';
+  env.TUNNEL_TCP_CATALOG = join(dir, 'tcp.json');
+  writeFileSync(env.TUNNEL_TCP_CATALOG, JSON.stringify({version: 1, items: [{alias: 'pg', domain: 'example.test', port: 5432, deviceLabel: 'paired-host', note: 'PostgreSQL'}]}));
   let child = spawn(process.execPath, ['dist/server.mjs'], {env, stdio: ['ignore', 'pipe', 'inherit']});
   t.after(async () => { child.kill(); caddy.closeAllConnections(); await new Promise(resolve => caddy.close(resolve)); rmSync(dir, {recursive: true, force: true}); });
   await ready(child);
@@ -41,8 +43,16 @@ test('standalone authentication, internal publishing, restart persistence and bl
   assert.match(login.headers.get('set-cookie'), /HttpOnly; SameSite=Strict/);
   const auth = {cookie: login.headers.get('set-cookie').split(';')[0]};
   assert.equal((await api('/api/services', 'GET', undefined, auth)).status, 200);
+  const tcp = (await (await api('/api/services', 'GET', undefined, auth)).json()).items[0];
+  assert.equal(tcp.host, 'pg.example.test');
+  assert.equal(tcp.port, 5432);
+  assert.equal(tcp.scheme, 'tcp');
+  assert.equal(tcp.visibility, 'internal');
+  assert.equal(tcp.readOnly, true);
+  assert.equal((await api('/api/services/pg', 'DELETE', undefined, auth)).status, 400);
   assert.equal((await api('/api/services', 'PUT', {}, {...auth, origin: 'https://evil.test'})).status, 403);
   const item = {alias: 'git', host: '127.0.0.1', port: 8080, scheme: 'http', visibility: 'internal', note: 'test'};
+  assert.equal((await api('/api/services', 'PUT', {...item, alias: 'pg', visibility: 'public'}, auth)).status, 400);
   const page = await (await fetch(base)).text();
   assert.match(page, /select name="transport"/);
   assert.match(page, /option value="frp"/);
@@ -58,6 +68,7 @@ test('standalone authentication, internal publishing, restart persistence and bl
   assert.equal((await api('/api/services', 'PUT', item, auth)).status, 200);
   assert.equal((await api('/api/apply', 'POST', {}, auth)).status, 200);
   assert.equal(changes.length, 1);
+  assert.equal(JSON.stringify(changes[0]).includes('pg.example.test'), false, 'TCP entries must never become HTTP routes or certificate requests');
   const subjects=changes[0].apps.tls.automation.policies.flatMap(policy=>policy.subjects);
   assert.equal(subjects.filter(name=>name==='git.example.test').length,1);
   assert.ok(subjects.includes('other.example.test'));
@@ -69,7 +80,9 @@ test('standalone authentication, internal publishing, restart persistence and bl
   child.kill(); await once(child, 'exit');
   child = spawn(process.execPath, ['dist/server.mjs'], {env, stdio: ['ignore', 'pipe', 'inherit']}); await ready(child);
   const restored = await api('/api/services', 'GET', undefined, {authorization: 'Bearer test-api-token'});
-  assert.equal((await restored.json()).items.length, 2);
+  assert.equal((await restored.json()).items.length, 3);
+  writeFileSync(env.TUNNEL_TCP_CATALOG, JSON.stringify({version: 1, items: [{alias: 'pg', domain: 'example.test', port: 70000, deviceLabel: 'paired-host', note: ''}]}));
+  assert.equal((await api('/api/services', 'GET', undefined, {authorization: 'Bearer test-api-token'})).status, 400, 'Invalid TCP configuration must be visible as an error');
 });
 
 test('AIO sidecar rejects wrong tenant and forwards only authorized service requests', async t => {
