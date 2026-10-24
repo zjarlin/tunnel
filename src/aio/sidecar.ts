@@ -65,5 +65,6 @@ const server = createServer(async (req, res) => {
     res.writeHead(result.status, {'content-type': 'application/json'}); res.end(await result.text());
   } catch (error) { send(502, {error: error instanceof Error ? error.message : '服务入口请求失败'}); }
 });
-server.listen(socket, () => { chmodSync(socket, 0o600); console.log('Tunnel sidecar ready'); });
+// 宿主与隔离进程使用不同 UID；外层目录由宿主以 0700 保护，业务调用仍校验令牌。
+server.listen(socket, () => { chmodSync(socket, 0o666); console.log('Tunnel sidecar ready'); });
 process.on('SIGTERM', () => server.close(async () => { await database?.end(); process.exit(0); }));

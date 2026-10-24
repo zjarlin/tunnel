@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn,execFileSync} from 'node:child_process';
-import {mkdtempSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,writeFileSync,readFileSync,rmSync,statSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {request} from 'node:http';
@@ -20,4 +20,5 @@ test('native AIO package embeds an ELF sidecar that serves the process contract'
   await Promise.race([once(child.stdout,'data'),once(child,'exit').then(([code])=>{throw new Error(`ELF sidecar exited ${code}`);}),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(new Error('ELF startup timeout')),10000);timer.unref();})]);
   const response=await new Promise((resolve,reject)=>{const call=request({socketPath:socket,path:'/aio/describe'},res=>{let text='';res.on('data',chunk=>{text+=chunk;});res.on('end',()=>resolve(JSON.parse(text)));});call.on('error',reject);call.end();});
   assert.equal(response.pages[0].label,'服务入口');
+  assert.equal(statSync(socket).mode & 0o777,0o666,'宿主 UID 必须能连接隔离进程的 socket');
 });
