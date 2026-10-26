@@ -73,8 +73,12 @@ docker compose up -d
 ## 天津服务登记约定
 
 - 设备隧道在 AIO「设备助手 → 内网服务」登记，命名 `tj-<服务>`（tianjin-server）与 `tjai-<服务>`（tianjin AI 机），域名后缀统一 `lyokm.cn`。
-- 控制台为每个隧道域名登记一条服务：目标固定 `127.0.0.1:8091`（AIO 隧道网关，按 Host 分流），`public` + `自动管理 DNS`，证书按域名单独签发；实际目标只维护在 AIO 设备隧道表里，避免两处定义。
-- 只监听远端回环、且未发布宿主端口的容器（例如 `edge-laya`）无法被隧道代理，需要先在目标机补端口映射或在容器网络内提供服务，控制台不代为改动远端编排。
+- 控制台为每个域名登记一条服务并单独签发证书，目标分两种：
+  - 远端监听在 `0.0.0.0` / EasyTier 地址：直接写 `<EasyTier IP>:<端口>`，请求由 Caddy 走 EasyTier 直连，浏览器不需要 AIO 登录。
+  - 远端只监听 `127.0.0.1`（例如 `edge-laya` 所在的容器）：写 `127.0.0.1:8091`（AIO 隧道网关，按 Host 分流），访问者必须从 AIO 设备助手打开，否则返回「请从 AIO 设备助手打开此服务」。
+- `public` = 公网可访问（DNS 为 CNAME 到 `raw.<域名>`）；`internal` = 仍发布域名，但 Caddy 只放行 `192.168.31.0/24`、`10.144.144.0/24`，其他来源 404。
+- 局域网浏览器解析 `*.lyokm.cn` 走 182 的 localmesh（不是本控制台的 home-edge），因此同一批域名还要在 `aio-plugin-portal` 登记一次（`/root/DockerCompose/aio-portal/aliases.json`，内网 CA + 同一 allowlist），两处 `host:port` 必须一致。
+- 只监听远端回环、且未发布宿主端口的容器（例如 `edge-laya`）需要先在目标机补端口映射才能直连；控制台不代为改动远端编排。
 
 ## AIO sidecar
 
