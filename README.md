@@ -60,6 +60,22 @@ docker compose up -d
 
 外部 DNS API 无法与 Caddy 构成跨系统事务；发布过程中任何错误都会返回失败，已完成的步骤可能已生效，修正后再次应用即可协调。
 
+## 密码本（凭据登记）
+
+控制台内置密码本，用于登记服务账号、数据库口令、云控制台与 API 令牌，和「服务入口」共用同一套登录与来源校验。
+
+- 落盘 `data/vault.enc`，AES-256-GCM 加密，密钥复用部署 `.env` 的 `TUNNEL_SECRET_KEY`（与 DNS 账号密文分开存放，AAD 固定 `vault.v1`）；文件权限 0600。
+- 列表接口只返回名称、分类、地址、账号和「是否已保存密码」，**永不返回口令**；只有显式「查看并复制」才由 `POST /api/vault/reveal` 回传单条口令，并在服务端日志记录 `vault reveal <id> <名称>`。
+- 编辑其他字段时密码留空表示沿用旧口令，避免为了改备注重输密钥。
+- 接口：`GET /api/vault`、`PUT /api/vault`、`POST /api/vault/reveal`、`DELETE /api/vault/<id>`，与其它接口一样接受控制台会话或 `TUNNEL_API_TOKEN`（AIO 侧车走 `/api/aio` 信封）。
+- 备份：密码本与 DNS 账号一起备份 `data/vault.enc` 与 `TUNNEL_SECRET_KEY`；丢失密钥即无法恢复，禁止只备份密文。
+
+## 天津服务登记约定
+
+- 设备隧道在 AIO「设备助手 → 内网服务」登记，命名 `tj-<服务>`（tianjin-server）与 `tjai-<服务>`（tianjin AI 机），域名后缀统一 `lyokm.cn`。
+- 控制台为每个隧道域名登记一条服务：目标固定 `127.0.0.1:8091`（AIO 隧道网关，按 Host 分流），`public` + `自动管理 DNS`，证书按域名单独签发；实际目标只维护在 AIO 设备隧道表里，避免两处定义。
+- 只监听远端回环、且未发布宿主端口的容器（例如 `edge-laya`）无法被隧道代理，需要先在目标机补端口映射或在容器网络内提供服务，控制台不代为改动远端编排。
+
 ## AIO sidecar
 
 见 [AIO.md](AIO.md)。适配器使用 Unix socket、宿主身份头、租户和用户白名单；核心状态和凭据不复制进插件。

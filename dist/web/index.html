@@ -6,7 +6,7 @@
 <main>
 <section id="login" class="login" hidden><h1 data-i18n="welcome"></h1><form id="login-form"><label><span data-i18n="account"></span><input name="user" autocomplete="username" required></label><label><span data-i18n="password"></span><input name="password" type="password" autocomplete="current-password" required></label><button class="primary" data-i18n="login"></button></form></section>
 <section id="workspace" hidden>
-<div class="heading"><div><h1 data-i18n="services"></h1><span id="domain" class="domain"></span></div><div class="actions"><button id="refresh" data-i18n="refresh"></button><button id="devices-button" data-i18n="devices"></button><button id="accounts-button" data-i18n="accounts"></button><button id="new-service" data-i18n="add"></button><button id="apply" class="primary" data-i18n="apply"></button></div></div>
+<div class="heading"><div><h1 data-i18n="services"></h1><span id="domain" class="domain"></span></div><div class="actions"><button id="refresh" data-i18n="refresh"></button><button id="devices-button" data-i18n="devices"></button><button id="accounts-button" data-i18n="accounts"></button><button id="vault-button" data-i18n="vault"></button><button id="new-service" data-i18n="add"></button><button id="apply" class="primary" data-i18n="apply"></button></div></div>
 <div class="panel table-wrap"><table><thead><tr><th data-i18n="domain"></th><th data-i18n="device"></th><th data-i18n="transport"></th><th data-i18n="target"></th><th data-i18n="visibility"></th><th data-i18n="dnsMode"></th><th data-i18n="note"></th><th data-i18n="actions"></th></tr></thead><tbody id="rows"></tbody></table><p id="empty" data-i18n="empty" hidden></p></div>
 <div id="publication" role="status" aria-live="polite"></div>
 </section>
@@ -34,5 +34,17 @@
 <label><span data-i18n="provider"></span><select name="provider"><option value="huawei">华为云</option><option value="dnspod">腾讯云 DNSPod</option><option value="cloudflare">Cloudflare</option></select></label>
 <label><span data-i18n="suffix"></span><input name="domain" required></label><label><span data-i18n="zone"></span><input name="zone"></label><label><span data-i18n="rawHost"></span><input name="rawHost" required></label>
 <label><span>AK / SecretId / Token</span><input name="key" type="password" autocomplete="new-password" placeholder="AK / SecretId / Token"></label><label><span>SK / SecretKey</span><input name="secret" type="password" autocomplete="new-password" placeholder="SK / SecretKey"></label><button class="primary" data-i18n="save"></button>
+</form></dialog>
+<dialog id="vault-dialog"><div class="heading"><h2 data-i18n="vault"></h2><button type="button" data-close="vault-dialog" data-i18n="close"></button></div>
+<label class="vault-search"><span data-i18n="vaultSearch"></span><input id="vault-search" placeholder="" autocomplete="off"></label>
+<div class="table-wrap"><table><thead><tr><th data-i18n="name"></th><th data-i18n="category"></th><th data-i18n="address"></th><th data-i18n="username"></th><th data-i18n="actions"></th></tr></thead><tbody id="vault-rows"></tbody></table><p id="vault-empty" data-i18n="vaultEmpty" hidden></p></div>
+<form id="vault-form" class="service-form">
+<label><span data-i18n="name"></span><input name="name" required maxlength="80" autocomplete="off"></label>
+<label><span data-i18n="category"></span><input name="category" maxlength="32" placeholder="数据库 / 中间件 / 站点 / 云控制台" autocomplete="off"></label>
+<label><span data-i18n="address"></span><input name="url" maxlength="512" placeholder="https://tj-web.lyokm.cn 或 raw.lyokm.cn:5432" autocomplete="off"></label>
+<label><span data-i18n="username"></span><input name="username" maxlength="256" autocomplete="off"></label>
+<label><span data-i18n="password"></span><input name="password" type="password" maxlength="1024" autocomplete="new-password"></label>
+<label><span data-i18n="note"></span><input name="note" maxlength="300" autocomplete="off"></label>
+<button class="primary" data-i18n="vaultSave"></button>
 </form></dialog>
 </body></html>

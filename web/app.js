@@ -5,6 +5,7 @@ const $ = id => document.getElementById(id);
 Object.assign(words, {dnsMode:'DNS 方式', managed:'自动管理 DNS', existing:'保留现有公网 DNS', removeExistingConfirm:'删除本地登记与代理？原公网入口和 DNS 会保留，需要在原入口单独关闭。'});
 Object.assign(words, {transport:'连接方式', easytier:'EasyTier / 直连', frp:'FRP 映射', frpHost:'FRP 映射地址', frpPort:'FRP 映射端口', frpPlaceholder:'127.0.0.1 或中转主机名', devicePlaceholder:'留空使用设备本机', frpRemoveConfirm:'已有 FRP 映射仍由原系统管理，需要在原系统单独关闭。', tlsServerName:'上游 TLS 主机名'});
 Object.assign(words, {copy:'复制地址', copied:'连接地址已复制', open:'打开', tcp:'TCP', managedTcp:'现有 TCP 入口', serviceCount:'项服务', refresh:'刷新'});
+Object.assign(words, {vault:'密码本', vaultSearch:'搜索名称 / 分类 / 账号 / 地址', vaultEmpty:'还没有登记凭据，填写下面表单保存第一条。', vaultSave:'保存条目', name:'名称', category:'分类', address:'地址', username:'账号', reveal:'查看并复制', copied:'密码已复制到剪贴板', vaultRemoveConfirm:'删除这条凭据？删除后无法恢复。', vaultSaved:'凭据已加密保存', vaultKeep:'留空保留原密码'});
 document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = words[node.dataset.i18n]; });
 document.querySelectorAll('[data-close]').forEach(node => { node.onclick = () => $(node.dataset.close).close(); });
 const hosted = Boolean(window.aioPlugin);
@@ -134,4 +135,71 @@ $('account-form').elements.domain.oninput = event => { $('account-form').element
 $('account-form').onsubmit = async event => { event.preventDefault(); try { await api('/api/accounts', 'PUT', Object.fromEntries(new FormData(event.target))); event.target.reset(); $('accounts-dialog').close(); await refresh(); message(words.accountSaved); } catch (error) { message(error.message, true); } };
 $('login-form').onsubmit = async event => { event.preventDefault(); try { await api('/api/login', 'POST', Object.fromEntries(new FormData(event.target))); event.target.reset(); await refresh(); $('message').hidden = true; } catch (error) { message(error.message, true); } };
 $('logout').onclick = async () => { try { await api('/api/logout', 'POST', {}); $('workspace').hidden = true; $('login').hidden = false; $('logout').hidden = true; } catch (error) { message(error.message, true); } };
+// ---- 密码本 ----------------------------------------------------------------
+let vaultItems = [], vaultEditing = '';
+function vaultMatches(item, query) {
+  if (!query) { return true; }
+  const text = [item.name, item.category, item.username, item.url, item.note].join(' ').toLowerCase();
+  return text.includes(query.toLowerCase());
+}
+function renderVault() {
+  const query = $('vault-search').value.trim();
+  const rows = $('vault-rows'); rows.replaceChildren();
+  const shown = vaultItems.filter(item => vaultMatches(item, query));
+  $('vault-empty').hidden = shown.length > 0;
+  for (const item of shown) {
+    const row = cells([item.name, item.category, item.url || '—', item.username || '—']);
+    const actions = document.createElement('td');
+    actions.append(button(words.reveal, () => revealVault(item)));
+    actions.append(button(words.edit, () => editVault(item)));
+    actions.append(button(words.remove, async () => {
+      if (!confirm(words.vaultRemoveConfirm)) { return; }
+      try { await api(`/api/vault/${encodeURIComponent(item.id)}`, 'DELETE'); await refreshVault(); message(words.saved); } catch (error) { message(error.message, true); }
+    }));
+    row.append(actions);
+    row.title = item.note || '';
+    rows.append(row);
+  }
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (error) { /* 回退到临时输入框 */ }
+  const field = document.createElement('textarea'); field.value = text; field.style.position = 'fixed'; field.style.opacity = '0'; document.body.append(field); field.select();
+  try { return document.execCommand('copy'); } finally { field.remove(); }
+}
+async function revealVault(item) {
+  try {
+    const value = await api('/api/vault/reveal', 'POST', {id:item.id});
+    const done = await copyText(value.password);
+    message(done ? `${words.copied} · ${item.name}` : `${item.name} 的密码需要手动复制`, !done);
+  } catch (error) { message(error.message, true); }
+}
+function editVault(item) {
+  const form = $('vault-form');
+  form.reset(); vaultEditing = item.id;
+  for (const key of ['name', 'category', 'url', 'username', 'note']) { form.elements[key].value = item[key] || ''; }
+  form.elements.password.placeholder = words.vaultKeep;
+  form.elements.name.focus();
+}
+async function refreshVault() {
+  const data = await api('/api/vault');
+  vaultItems = data.items || [];
+  renderVault();
+}
+$('vault-button').onclick = async () => {
+  try {
+    $('vault-form').reset(); vaultEditing = ''; $('vault-search').value = ''; $('vault-form').elements.password.placeholder = '';
+    await refreshVault(); $('vault-dialog').showModal();
+  } catch (error) { message(error.message, true); }
+};
+$('vault-search').oninput = () => { if (vaultItems.length) { renderVault(); } };
+$('vault-form').onsubmit = async event => {
+  event.preventDefault();
+  const data = Object.fromEntries(new FormData(event.target));
+  if (vaultEditing) { data.id = vaultEditing; }
+  try {
+    await api('/api/vault', 'PUT', data);
+    event.target.reset(); vaultEditing = ''; event.target.elements.password.placeholder = '';
+    await refreshVault(); message(words.vaultSaved);
+  } catch (error) { message(error.message, true); }
+};
 refresh().catch(error => { if (hosted) { message(error.message, true); } });

@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {access} from './access.js';
 import {settings, required} from './settings.js';
 import {serviceRegistry} from './services.js';
+import {vault} from './vault.js';
 
 const config = settings();
 const origin = new URL(required('TUNNEL_PUBLIC_URL')).origin;
@@ -14,6 +15,8 @@ const allowedOrigins = new Set([origin, ...(process.env.TUNNEL_EXTRA_ORIGINS ?? 
 })]);
 const login = access(required('TUNNEL_ADMIN_USER'), required('TUNNEL_ADMIN_PASSWORD'), required('TUNNEL_API_TOKEN'));
 const services = serviceRegistry(config, required('TUNNEL_CADDY_ADMIN'));
+// 密码本与 DNS 账号共用部署密钥，但密文独立成文件。
+const book = vault(config.portal.root);
 const assets: Record<string, [string, string]> = {'/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css']};
 
 async function body(request: IncomingMessage): Promise<Record<string, unknown>> {
@@ -69,6 +72,16 @@ const server = createServer(async (request, response) => {
     if (method === 'PUT' && path === '/api/devices') { send(200, await services.devices.bind(await data())); return; }
     if (method === 'GET' && path === '/api/accounts') { send(200, {items: services.accounts.list()}); return; }
     if (method === 'PUT' && path === '/api/accounts') { send(200, services.accounts.save(await data())); return; }
+    if (method === 'GET' && path === '/api/vault') { send(200, {items: book.list()}); return; }
+    if (method === 'PUT' && path === '/api/vault') { send(200, book.save(await data())); return; }
+    if (method === 'POST' && path === '/api/vault/reveal') {
+      const value = await data();
+      const revealed = book.reveal(String(value.id ?? ''));
+      // 只记录「谁看了哪条」，不记录口令本身。
+      console.log(`vault reveal ${revealed.id} ${revealed.name}`);
+      send(200, revealed); return;
+    }
+    if (method === 'DELETE' && path.startsWith('/api/vault/')) { send(200, book.remove(decodeURIComponent(path.slice('/api/vault/'.length)))); return; }
     if (method === 'GET' && path === '/api/publications') { send(200, services.status()); return; }
     if (method === 'POST' && path === '/api/publications') {
       await data();
