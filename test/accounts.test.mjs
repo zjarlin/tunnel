@@ -13,11 +13,15 @@ test('cloud credentials remain encrypted, survive updates, and never appear in a
   const {accounts} = await import(pathToFileURL(join(root,'accounts.mjs')));
   process.env.TUNNEL_SECRET_KEY = Buffer.alloc(32, 9).toString('base64');
   const store = accounts(root);
-  const account = {id:'cloud',label:'云账号',provider:'huawei',domain:'example.test',zone:'',rawHost:'raw.example.test',key:'test-ak-unique',secret:'test-sk-unique'};
+  const account = {id:'cloud',label:'云账号',provider:'huawei',domain:'example.test',zone:'',rawHost:'raw.example.test',key:'test-ak-unique',secret:'secret-sk-9999'};
   store.save(account);
   assert.equal(store.get('cloud').secret,account.secret);
   assert.equal(JSON.stringify(store.list()).includes(account.secret),false);
   assert.equal(JSON.stringify(store.list()).includes(account.key),false);
+  const listed = store.list()[0];
+  assert.equal(listed.configured,true);
+  assert.equal(listed.keyHint,'test…ique');
+  assert.equal(listed.secretHint,'secr…9999');
   assert.equal(readFileSync(join(root,'accounts.enc')).includes(Buffer.from(account.secret)),false);
   store.save({...account,label:'新名称',key:'',secret:''});
   assert.equal(store.get('cloud').secret,account.secret);

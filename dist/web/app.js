@@ -111,9 +111,23 @@ $('devices-button').onclick = async () => {
     $('devices-dialog').showModal();
   } catch (error) { message(error.message, true); }
 };
+// 凭据只回显首尾掩码（服务端返回 keyHint/secretHint），让「已配置」可见但整串密钥不进页面。
+function accountCredentialHints(account) {
+  const form = $('account-form').elements;
+  const hint = (field, fallback) => { form[field].placeholder = account?.[`${field}Hint`] ? `已配置 ${account[`${field}Hint`]}，留空保留` : fallback; form[field].title = form[field].placeholder; };
+  hint('key', 'AK / SecretId / Token');
+  hint('secret', 'SK / SecretKey');
+}
 $('accounts-button').onclick = () => {
-  $('account-form').reset(); $('account-list').replaceChildren();
-  for (const account of accounts) { $('account-list').append(button(`${account.label} · ${account.domain} · ${words.configured}`, () => { $('account-form').reset(); for (const key of ['id','label','provider','domain','zone','rawHost']) { $('account-form').elements[key].value = account[key] || ''; } })); }
+  $('account-form').reset(); $('account-list').replaceChildren(); accountCredentialHints(undefined);
+  for (const account of accounts) {
+    const hints = [account.keyHint && `AK ${account.keyHint}`, account.secretHint && `SK ${account.secretHint}`].filter(Boolean).join(' · ');
+    $('account-list').append(button(`${account.label} · ${account.domain} · ${words.configured}${hints ? `（${hints}）` : ''}`, () => {
+      $('account-form').reset();
+      for (const key of ['id','label','provider','domain','zone','rawHost']) { $('account-form').elements[key].value = account[key] || ''; }
+      accountCredentialHints(account);
+    }));
+  }
   $('accounts-dialog').showModal();
 };
 $('account-form').elements.domain.oninput = event => { $('account-form').elements.rawHost.value = `raw.${event.target.value}`; };

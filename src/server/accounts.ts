@@ -3,7 +3,14 @@ import {existsSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
 
 export type DnsAccount = {id: string; label: string; provider: 'cloudflare' | 'huawei' | 'dnspod'; domain: string; zone: string; rawHost: string; key: string; secret: string};
 
-/** 云凭据只在服务端解密，浏览器读取列表时永远不返回密钥。 */
+/** 云凭据只在服务端解密，浏览器读取列表时只拿到首尾掩码，永远不返回整串密钥。 */
+function hint(value: string): string {
+  const text = value.trim();
+  if (!text) { return ''; }
+  if (text.length <= 8) { return '•'.repeat(text.length); }
+  return `${text.slice(0, 4)}…${text.slice(-4)}`;
+}
+
 export function accounts(root: string) {
   const file = `${root}/accounts.enc`;
   function key() {
@@ -25,7 +32,8 @@ export function accounts(root: string) {
   }
   return {
     get,
-    list: () => all().map(({key: _key, secret: _secret, ...publicFields}) => ({...publicFields, configured: true})),
+    // 只回显首尾各 4 位：界面据此确认「已配置」，浏览器与日志都拿不到整串密钥。
+    list: () => all().map(({key: accessKey, secret: secretKey, ...publicFields}) => ({...publicFields, configured: true, keyHint: hint(accessKey), secretHint: hint(secretKey)})),
     save(value: Record<string, unknown>) {
       const current = all();
       const id = String(value.id ?? '');
