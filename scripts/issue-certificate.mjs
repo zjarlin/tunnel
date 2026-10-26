@@ -60,6 +60,11 @@ async function writeTxt(name, value) {
   }
   // 上次中断留下的同名 TXT 先清掉，避免 ACME 校验读到旧值。
   for (const record of stale) { await dns.deleteRecordSet(new DeleteRecordSetRequest(acc.zone, record.id)); }
+  // 删旧值后要等它在权威 NS 上真的消失，否则 ACME 会同时看到新旧两条 TXT 判失败。
+  for (let attempt = 0; attempt < 12 && stale.length; attempt += 1) {
+    if ((await records(name)).length === 0) break;
+    await delay(5000);
+  }
   await dns.createRecordSet(new CreateRecordSetRequest(acc.zone).withBody(
     new CreateRecordSetRequestBody(`${name}.`, 'TXT', [JSON.stringify(value)]).withTtl(300).withDescription(owner),
   ));
@@ -73,10 +78,12 @@ async function writeTxt(name, value) {
 async function waitFor(name, value) {
   // 先查权威 NS（写入即生效），再等公共解析器；递归 DNS 的负缓存会让公共查询滞后。
   const resolver = new Resolver({timeout: 5000, tries: 2});
-  // Resolver.setServers 只接受 IP：先解析权威 NS 地址。
-  const authoritative = await new Resolver({timeout: 5000, tries: 1}).resolve4('ns1.huaweicloud-dns.com').catch(() => []);
-  resolver.setServers([...resolvers, ...authoritative]);
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  // Resolver.setServers 只接受 IP：先把网关的全部权威 NS 域名解析成地址。
+  const authoritative = (await Promise.all(['ns1.huaweicloud-dns.cn', 'ns1.huaweicloud-dns.com', 'ns1.huaweicloud-dns.net', 'ns1.huaweicloud-dns.org']
+    .map(host => new Resolver({timeout: 5000, tries: 1}).resolve4(host).catch(() => [])))).flat();
+  // 权威 NS 必须排在前面：公共递归对刚出现的名字会返回缓存 NXDOMAIN，掩盖已写入的记录。
+  resolver.setServers([...new Set([...authoritative, ...resolvers])]);
+  for (let attempt = 0; attempt < 50; attempt += 1) {
     try {
       const txt = await resolver.resolveTxt(name);
       if (txt.some(item => item.join('') === value)) {
