@@ -1,6 +1,6 @@
 # Tunnel
 
-独立部署的服务入口控制台。通过表格登记域名别名、目标主机、端口和访问范围，复用 Caddy 与现有 EasyTier 网络。AIO 可通过 sidecar 接入同一个 API；独立控制台可单独运行；启用配对设备列表时只读接入 AIO 的共享 PostgreSQL。
+服务入口控制台。用户视角只有三步：**配对设备 → 填内网地址 → 选 DNS 服务商**，再由一台**发布节点**（VPS / 中继出口）把服务公开到公网。实现上复用 Caddy、ACME 与现有中继网络，但这些不出现在界面里：界面只出现「配对设备」「中继地址」「发布出口」「访问范围」。AIO 可通过 sidecar 接入同一个 API；独立控制台可单独运行；启用配对设备列表时只读接入 AIO 的共享 PostgreSQL。
 
 本项目从 [aio-plugin-portal](https://github.com/org-aio/aio-plugin-portal) 保留 Git 历史演进而来。DNS provider 与 CLI 代码在这里继续维护；AIO 适配只承担身份校验和 API 转发。
 
@@ -33,7 +33,7 @@ docker compose up -d
 | `TUNNEL_BIND` / `TUNNEL_PORT` | 服务监听地址和端口，建议只监听 loopback，由现役 Caddy 代理 |
 | `TUNNEL_DOMAIN` | 登记域名的后缀 |
 | `TUNNEL_RAW_HOST` | 公网别名 CNAME 目标，例如 `raw.example.com`；该入口的 A 记录由 DDNS 或管理员维护 |
-| `TUNNEL_LAN_IP` / `TUNNEL_ALLOWED_CIDRS` | 内网入口地址与允许访问的 LAN / EasyTier CIDR，逗号分隔 |
+| `TUNNEL_LAN_IP` / `TUNNEL_ALLOWED_CIDRS` | 内网入口地址与允许访问的 LAN / 中继网段（CIDR，逗号分隔） |
 | `TUNNEL_ADMIN_USER` / `TUNNEL_ADMIN_PASSWORD` | 控制台账号密码 |
 | `TUNNEL_API_TOKEN` | sidecar 或自动化调用使用的服务端凭据 |
 | `TUNNEL_CADDY_LISTENER` | Caddy HTTPS 监听地址，用于存在多个实例时精确选择服务 |
@@ -67,7 +67,7 @@ docker compose up -d
 ## 服务管理
 
 - 「保存并应用」保存表格后立即发布；逐步显示设备端口、DNS 预检、Caddy 和云记录读回状态。全部 DNS 计划通过后才更新 Caddy。
-- 「连接方式」可选 EasyTier / 直连或 FRP 映射。FRP 使用已经运行的 frps TCP 映射或 frpc STCP visitor：填写映射地址与端口，发布前实测连通性，再配置同一套 DNS、Caddy 和证书；可关联配对设备，但不要求 EasyTier 地址。此入口不安装、修改或删除已有 frps/frpc 配置。
+- 「连接方式」不再让用户选择：表单里只保留配对设备与内网地址两项，界面按登记内容自动显示「设备中继」「—」或「FRP 映射（遗留）」。历史 FRP 条目继续可用（Frps TCP 映射 / frpc STCP visitor：填写映射地址与端口，发布前实测连通性），但本服务不安装、修改或删除已有 frps/frpc 配置。
 - 控制台通过额外 HTTPS 端口访问时，在部署 `.env` 的 `TUNNEL_EXTRA_ORIGINS` 配置完整来源（逗号分隔）；只接受与 `TUNNEL_PUBLIC_URL` 同协议、同域名的其他端口，登录和表单提交仍拒绝其他来源。
 - HTTPS FRP 映射需填写真实上游证书的 TLS 主机名，Caddy 使用该名称验证证书；不会因映射地址为回环而关闭 TLS 校验。
 - 仅内网 FRP 必须使用本机 `127.0.0.1` 映射，并将 frps 的 `proxyBindAddr` 或 visitor 的 `bindAddr` 设为 `127.0.0.1`；Linux 宿主网络中会检查实际 TCP 监听，发现通配或非回环监听会阻止发布。每 30 秒恢复路由时也会检查，异常路由会从 Caddy 撤下。公网 FRP 可填写可达的中转主机名与端口。
@@ -78,9 +78,38 @@ docker compose up -d
 - 内网 DNS 记录写入 `data/dns/tunnel.hosts`，需要主机解析器加载，见 AIO.md。应用不会擅自修改路由器 DHCP 或 DNS。
 - Caddy 只修改 `tunnel-services-*` 与 `tunnel-internal-certificates` 命名资源，保留其他服务；Caddy 热加载后最多 30 秒恢复上次成功发布的数据，草稿不会自动发布。
 - 配置 DNS 账号的服务在删除或公网转内网时移除本系统管理的 DNS 记录；遇到其他系统的记录会阻止发布。旧版默认 Cloudflare 配置需人工确认旧记录归属。
-- 选择 AIO 已配对设备并绑定 EasyTier 地址，支持设备本机服务和通过已有子网路由可达的服务；复用现役 EasyTier，不安装第二套网络或配对协议。
+- 选择 AIO 已配对设备并绑定中继地址，支持设备本机服务和通过已有子网路由可达的服务；复用现役中继网络，不安装第二套网络或配对协议。
+- 目标地址解析三种情况：没绑设备时填写的主机就是最终目标；绑了设备又填了主机时按填写的主机走；绑了设备但目标留空时用该设备的中继地址。只有「服务就在发布节点本机」才允许写 `127.0.0.1`，其他设备的回环直接报错，不会静默探测错误地址。
+- 上游探测只报问题不拦发布：某台后端离线时其余路由照常下发，发布记录与该条目会标注「上游暂不可达」，访问该域名返回 502。
 
 外部 DNS API 无法与 Caddy 构成跨系统事务；发布过程中任何错误都会返回失败，已完成的步骤可能已生效，修正后再次应用即可协调。
+
+## 发布节点（VPS / 中继出口）
+
+配对设备里可以指定**一台**发布节点，界面上的「角色」列显示为「发布出口」，页头同时显示当前发布出口（如 `addzero.site · 49 项服务 · 发布出口 okm182`）。
+
+- 发布节点负责公网入口、证书与 DNS，全机唯一：把另一台设为发布节点会自动摘掉上一台的角色，但保留它的中继地址。
+- 发布记录第一步会写明「发布出口 <设备名>」；未指定时写明「未指定发布节点，按本机出口发布」，不静默猜测。
+- 角色与地址分开存：`data/devices.json` 为 `{"<设备ID>": {"address": "...", "role": "publish"}}`，历史字符串格式 `{"<设备ID>": "<地址>"}` 读入时自动归一，不会丢地址。
+- 目标地址解析三种情况见上一节；发布节点本机服务写 `127.0.0.1` 是合法的，其他设备的回环会直接报错。
+- 一键测速在登记处（`aio-plugin-portal`）：`GET`/界面「一键测速」，延迟按 RGB 从绿到红上色，异常域名退出码非 0。
+
+## 与 AIO 的边界（能否砍掉 tunnel.addzero.site）
+
+本项目**已经是**一个 AIO 插件包（`scripts/package-aio.mjs` 产出 `dist/tunnel.aio-plugin` 与 `aio-manifest.toml`，含 `plugin.runtime` / `plugin.frontend` / `plugin.database`），
+sidecar 走宿主 broker `/egress/http` 转发 `/api/{services,apply,devices,accounts,publications}`。但当前 `tunnel.addzero.site` 仍是独立的宿主侧发布面，原因是**发布动作落在宿主上，而不是插件沙箱里**：
+
+| 发布节点要做的事 | 现在的执行位置 | 插件沙箱现状 |
+| --- | --- | --- |
+| Caddy 路由 / 访问范围 | 宿主 Caddy admin `127.0.0.1:2019` | `network=none`，访问不到 Caddy admin |
+| 公网 DNS | 宿主进程直连云 DNS API | 需走宿主 broker 白名单端点 |
+| ACME 证书 | 宿主进程 + 宿主证书目录 | 需宿主代理写盘与开放 80/443 |
+| 内网 DNS 文件 | `data/dns/tunnel.hosts` | 需宿主 reload 解析器 |
+
+因此砍掉 `tunnel.addzero.site` 的前置条件是宿主侧提供 edge agent（暴露 Caddy reload、ACME、DNS 写入、解析器 reload 四类受控操作），
+并在**双跑对账**（同一批域名两个入口都发布、逐个比对 Caddy 路由 / 证书 / DNS 读回）通过后再停旧容器、删 CNAME。
+在 edge agent 落地前，`aio-plugin-device` 的隧道只做**登录态中继访问**（`/api/runtime/device-tunnels*`，一次性 ticket），
+没有自定义域名、没有 ACME、没有公网 DNS、没有 TCP，`--public` 显式返回未授权——它现在不能承担「配对后一键暴露到公网」这件事。
 
 ## 密码本（凭据登记）
 
@@ -105,7 +134,7 @@ docker compose up -d
 
 - 设备隧道在 AIO「设备助手 → 内网服务」登记，命名 `tj-<服务>`（tianjin-server）与 `tjai-<服务>`（tianjin AI 机），域名后缀统一 `lyokm.cn`。
 - 控制台为每个域名登记一条服务并单独签发证书，目标分两种：
-  - 远端监听在 `0.0.0.0` / EasyTier 地址：直接写 `<EasyTier IP>:<端口>`，请求由 Caddy 走 EasyTier 直连，浏览器不需要 AIO 登录。
+  - 远端监听在 `0.0.0.0` / 中继地址：直接写 `<中继 IP>:<端口>`，请求由 Caddy 走中继直连，浏览器不需要 AIO 登录。
   - 远端只监听 `127.0.0.1`（例如 `edge-laya` 所在的容器）：写 `127.0.0.1:8091`（AIO 隧道网关，按 Host 分流），访问者必须从 AIO 设备助手打开，否则返回「请从 AIO 设备助手打开此服务」。
 - `public` = 公网可访问（DNS 为 CNAME 到 `raw.<域名>`）；`internal` = 仍发布域名，但 Caddy 只放行 `192.168.31.0/24`、`10.144.144.0/24`，其他来源 404。
 - 局域网浏览器解析 `*.lyokm.cn` 走 182 的 localmesh（不是本控制台的 home-edge），因此同一批域名还要在 `aio-plugin-portal` 登记一次（`/root/DockerCompose/aio-portal/aliases.json`，内网 CA + 同一 allowlist），两处 `host:port` 必须一致。

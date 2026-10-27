@@ -10,7 +10,7 @@ const image = required('TUNNEL_NODE_IMAGE');
 const manifest = `schema_version = 2
 [plugin.marketplace]
 title = "服务入口"
-summary = "配对设备、DNS、Caddy 与 EasyTier / FRP 服务发布"
+summary = "配对设备、内网地址、DNS 服务商与访问范围：一台发布节点把服务公开到公网"
 license = "MIT"
 tags = ["网络", "设备", "DNS"]
 [plugin.runtime]
