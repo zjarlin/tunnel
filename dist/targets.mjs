@@ -1,0 +1,2 @@
+import {createRequire} from 'node:module'; const require = createRequire(import.meta.url);
+function s(r,o,n){let t=String(r.host??"").trim();if(!(t==="127.0.0.1"||t==="localhost"))return t||n;if(r.deviceId===o)return"127.0.0.1";throw new Error("\u8BBE\u5907\u670D\u52A1\u7559\u7A7A\u76EE\u6807\u4E3B\u673A\u5373\u53EF\uFF0C\u4E0D\u80FD\u628A\u8FDC\u7AEF loopback \u5F53\u4F5C\u5165\u53E3\u672C\u673A")}export{s as resolveHost};

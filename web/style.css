@@ -7,3 +7,10 @@ dialog{border:1px solid var(--border);border-radius:12px;width:min(900px,95vw);p
 .vault-search{margin:0 0 16px;max-width:460px}.heading>.vault-search{margin:0;flex:1 1 320px}
 #vault-rows td:last-child button{margin-right:6px}
 #vault-empty{padding:20px;color:#8a95a5;text-align:center}
+
+# 配对设备：发布节点提示与角色标记
+.hint{margin:0 0 14px;color:#6b7c93;font-size:12px;line-height:1.6}
+#device-rows td:nth-child(3){white-space:nowrap}
+#device-rows td.badge{color:#245bd6;font-weight:650}
+
+#publication.warn{color:#a15c00}

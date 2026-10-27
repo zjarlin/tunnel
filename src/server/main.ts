@@ -70,7 +70,10 @@ const server = createServer(async (request, response) => {
     if (method === 'GET' && path === '/api/services') { send(200, {domain: config.suffix, items: await services.list(), status: services.status()}); return; }
     if (method === 'PUT' && path === '/api/services') { send(200, await services.save(await data())); return; }
     if (method === 'DELETE' && path.startsWith('/api/services/')) { send(200, await services.remove(decodeURIComponent(path.slice('/api/services/'.length)))); return; }
-    if (method === 'GET' && path === '/api/devices') { send(200, {items: await services.devices.list()}); return; }
+    if (method === 'GET' && path === '/api/devices') {
+      // 一并返回发布节点：界面据此显示「由 okm182 发布」，无需再暴露连接实现。
+      send(200, {items: await services.devices.list(), publish: services.devices.publish() ?? null}); return;
+    }
     if (method === 'PUT' && path === '/api/devices') { send(200, await services.devices.bind(await data())); return; }
     if (method === 'GET' && path === '/api/accounts') { send(200, {items: services.accounts.list()}); return; }
     if (method === 'PUT' && path === '/api/accounts') { send(200, services.accounts.save(await data())); return; }

@@ -27,7 +27,7 @@ export type ServiceRow = {
 };
 
 const visible: Record<string, string> = {internal: '仅内网', public: '公网'};
-const transport: Record<string, string> = {easytier: 'EasyTier / 直连', frp: 'FRP 映射'};
+const transport: Record<string, string> = {easytier: '设备中继 / 直连', frp: 'FRP 映射（遗留）'};
 const dnsMode: Record<string, string> = {managed: '自动管理 DNS', existing: '保留现有公网 DNS'};
 const scheme: Record<string, string> = {http: 'HTTP', https: 'HTTPS', tcp: 'TCP'};
 

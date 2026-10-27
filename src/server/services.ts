@@ -9,6 +9,7 @@ import {dnsPlan} from './cloud-dns.js';
 import {certificates} from './certificates.js';
 import {verifyPrivateFrpListener} from './frp.js';
 import {tcpCatalog} from './tcp-catalog.js';
+import {resolveHost} from './targets.js';
 
 /**
  * 注册表是唯一真相源，别的入口（aio-portal / 数据迁移脚本）写进来的字段
@@ -41,7 +42,7 @@ export function validate(value: Record<string, unknown>): Alias {
   const transport = value.transport ?? 'easytier';
   const tlsServerName = String(value.tlsServerName ?? '');
   if (transport !== 'easytier' && transport !== 'frp') { throw new Error('连接方式无效'); }
-  if (transport === 'frp' && !validHost(host)) { throw new Error('请填写 FRP 映射地址，不能留空使用设备的 EasyTier 地址'); }
+  if (transport === 'frp' && !validHost(host)) { throw new Error('请填写 FRP 映射地址，不能留空使用设备的中继地址'); }
   if (transport === 'frp' && visibility === 'internal' && host !== '127.0.0.1') { throw new Error('仅内网 FRP 映射必须使用入口本机 127.0.0.1'); }
   if (typeof alias !== 'string' || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(alias)) { throw new Error('域名别名无效'); }
   if ((!deviceId || host) && !validHost(host)) { throw new Error('目标主机无效'); }
@@ -80,10 +81,9 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
       return item;
     }
     if (!item.deviceId) { return item; }
+    const outlet = devices.publish();
     const address = await devices.resolve(item.deviceId);
-    // 留空表示设备本机；显式目标表示已通过 EasyTier 子网路由到达的服务。
-    if (['127.0.0.1', 'localhost'].includes(item.host)) { throw new Error('设备服务留空目标主机即可，不能把远端 loopback 当作入口本机'); }
-    return {...item, host: item.host || address};
+    return {...item, host: resolveHost(item, outlet?.id, address)};
   }
   return {
     devices, accounts: credentials, assertIdle,
@@ -147,11 +147,23 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
       }
       try {
         await hydrate(settings);
-        record('准备发布', 'running');
+        // 发布出口必须是可以出网的那台；没指定时明确报出来，而不是默默用本机。
+        const outlet = devices.publish();
+        const outletLabel = outlet ? (await devices.list()).find(item => item.id === outlet.id)?.label ?? outlet.id : undefined;
+        record('准备发布', 'running', outletLabel ? `发布出口 ${outletLabel}` : '未指定发布节点，按本机出口发布');
         // 注册表里同时有 182 内网（localmesh）与外部入口的登记，本服务只发布自己的那部分。
         const aliases = await Promise.all(readAliases(settings).filter(item => rendersOn(item, 'home-edge')).map(resolve));
-        if (process.env.TUNNEL_VERIFY_UPSTREAM === '1') { await Promise.all(aliases.map(item => probe(item.host, item.port))); }
-        record('设备与目标端口', 'success');
+        // 上游探测是「发现问题」而不是「拦住发布」：单台后端离线不该让其余路由一起停摆。
+        // 不可达的条目照常生成路由（访问时返回 502），但要在发布记录里点名，便于排查。
+        let unreachable: string[] = [];
+        if (process.env.TUNNEL_VERIFY_UPSTREAM === '1') {
+          const probes = await Promise.all(aliases.map(async item => {
+            try { await probe(item.host, item.port); return ''; }
+            catch { return `${item.alias}（${item.host}:${item.port}）`; }
+          }));
+          unreachable = probes.filter(Boolean);
+        }
+        record('设备与目标端口', 'success', unreachable.length ? `上游暂不可达：${unreachable.join('、')}` : undefined);
         const removed = previous().filter(old => !aliases.some(item => item.alias === old.alias));
         const plans: Array<() => Promise<void>> = [];
         for (const item of [...aliases, ...removed.filter(item => item.dnsMode !== 'existing').map(item => ({...item, visibility: 'internal' as const}))]) {
@@ -189,7 +201,7 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
         const hosts = aliases.map(item => `${settings.lanIp} ${serviceDomain(settings, item)}`).join('\n');
         writeFileSync(`${root}/dns/tunnel.hosts`, `${hosts}\n`, {mode: 0o644});
         record('内网 DNS 文件', 'success');
-        const report = {at: Date.now(), state: 'success', routes: aliases.map(item => item.alias), steps, dns: '内网解析由主机监听器加载'};
+        const report = {at: Date.now(), state: 'success', routes: aliases.map(item => item.alias), ...(unreachable.length ? {warnings: unreachable} : {}), steps, dns: '内网解析由主机监听器加载'};
         writeFileSync(statusFile, JSON.stringify(report), {mode: 0o600});
         return report;
       } catch (error) {
