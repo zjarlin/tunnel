@@ -95,15 +95,18 @@ export class ServicePanel {
   private publishing = false;
   private readonly caps: PanelCaps;
   private readonly form: HTMLFormElement;
-  private readonly root: DocumentFragment = document.createDocumentFragment();
-
   constructor(private readonly host: PanelHost, options: {mount?: HTMLElement} = {}) {
     this.caps = {...DEFAULTS, ...host.caps};
-    const holder = document.createElement('div');
-    holder.innerHTML = markup();
-    this.root = document.createDocumentFragment();
-    this.root.append(...Array.from(holder.children));
-    (options.mount ?? document.body).append(this.root);
+    const template = document.createElement('template');
+    template.innerHTML = markup();
+    const dialogs: HTMLDialogElement[] = [];
+    const inline: Node[] = [];
+    for (const node of Array.from(template.content.childNodes)) {
+      if (node.nodeName === 'DIALOG') { dialogs.push(node as HTMLDialogElement); } else { inline.push(node); }
+    }
+    // 弹窗统一挂到 body：面板可能被放进滚动容器或隐藏的工作区，dialog 不该继承那层布局。
+    document.body.append(...dialogs);
+    (options.mount ?? document.body).append(...inline);
     this.form = el<HTMLFormElement>('domain-form');
     if (this.caps.deviceTunnel) {
       (field(this.form, 'transport') as HTMLSelectElement).append(option('device', '设备隧道（当前账号访问）'));
@@ -127,7 +130,7 @@ export class ServicePanel {
       if (hint?.open && !hint.contains(event.target as Node)) { hint.open = false; }
     });
     document.addEventListener('keydown', event => { if (event.key === 'Escape') { this.hint(false); } });
-    for (const button of this.root.querySelectorAll<HTMLButtonElement>('[data-domain-close]')) {
+    for (const button of document.querySelectorAll<HTMLButtonElement>('[data-domain-close]')) {
       button.onclick = () => el<HTMLDialogElement>(button.dataset.domainClose!).close();
     }
   }
