@@ -92,6 +92,20 @@ node dist/cli.mjs --help
 
 Web 控制台支持 Cloudflare API Token、华为云 AK/SK、腾讯云 SecretId/SecretKey；两家国内云使用官方 SDK 签名。凭据以 AES-256-GCM 加密保存，页面只显示配置状态。公网别名创建 DNS-only CNAME 指向唯一 `raw.<域名>` A 记录，内网服务不创建公网记录。CLI 保留原有 provider 配置。
 
+## 证书签发（命令行脚本）
+
+控制台发布时会自动申请证书；内置 ACME 报 `ACME 连接失败`（实际外网可达，属其内部问题）时，用脚本单独签发，产物会被控制台直接加载、跳过重复签发：
+
+```sh
+# 华为云 DNS-01（lyokm.cn 等）
+node scripts/issue-certificate.mjs <域名> [...]
+
+# Cloudflare DNS-01（addzero.site 等），可一次多个，--out 导出给 file-based Caddy
+TUNNEL_CF_TOKEN=... TUNNEL_CF_ZONE=... node scripts/issue-certificate-cf.mjs <域名> [...] [--out <目录>] [--force]
+```
+
+两者都写 `<TUNNEL_DATA>/certificates/<域名>.json`；`--out` 额外导出 `<tls-<域名点转横线>>/{fullchain.pem,privkey.pem}`，给 `tls <pem> <key>` 的站点用（例：`company-ai.addzero.site`、`macmini-ai.addzero.site` 的 localmesh 站点）。缺省环境变量从 `TUNNEL_ENV_FILE`（默认 `/root/DockerCompose/tunnel/.env`）读取，令牌不入库。
+
 ## 验证与发布
 
 `npm test` 执行 CLI、HTTP 登录与持久化、内网策略、被阻断的公网发布和 AIO sidecar 身份测试。GitHub Actions 在 main 推送后执行同一命令并生成 `tunnel.tar.gz`；部署前用实际 Caddy 和入口验证。
