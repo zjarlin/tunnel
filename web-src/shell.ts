@@ -89,14 +89,18 @@ async function load(): Promise<void> {
   $('login').hidden = true;
   $('workspace').hidden = false;
   $('logout').hidden = hosted;
+  // 首次进页面会先吃到 401 提示，登录成功后要清掉。
+  const notice = $('message');
+  if (!notice.classList.contains('error')) { notice.textContent = ''; notice.hidden = true; }
   // 宿主只能回 JSON，Excel 下载只在独立控制台可用。
   $('export-button').hidden = hosted;
   $('vault-export').hidden = hosted;
   $('vault-export-secrets').hidden = hosted;
   $('domain').textContent = `${domain} · ${registry.items.length} ${words.serviceCount}`;
+  // 先回灌目录再取行：panel.rows() 依赖 load() 里的设备/账号/发布状态。
+  panel.load({registry: {domain, items: registry.items, status: registry.status}, devices: deviceList, accounts: accountList});
   $('rows').replaceChildren(...panel.rows());
   $('empty').hidden = registry.items.length > 0;
-  panel.load({registry: {domain, items: registry.items, status: registry.status}, devices: deviceList, accounts: accountList});
 }
 
 // ---- 密码本 ----------------------------------------------------------------

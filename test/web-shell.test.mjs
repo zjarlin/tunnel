@@ -28,3 +28,17 @@ test('服务入口面板由构建产物提供，不再写死在 index.html', () 
   assert.match(html, /id="panel-mount"/, '面板需要挂载点');
   assert.match(html, /id="panel-tools"/, '面板按钮需要容器');
 });
+
+/**
+ * 表头列数必须等于面板实际产出的列数：两边由不同的文件定义（HTML 表头 vs panel.ts 能力开关），
+ * 少一列会让「备注」串到「操作」下面，多一列会留下空列——都只有肉眼看页面才能发现。
+ */
+test('独立控制台表头列数与面板能力开关一致', () => {
+  const header = html.match(/<thead>([\s\S]*?)<\/thead>/)[1];
+  const columns = [...header.matchAll(/<th\b/g)].length;
+  // 独立站：别名 + 入口归属 + 设备 + 连接方式 + 目标 + 连接地址 + 访问范围 + DNS 方式 + 备注 + 操作
+  assert.equal(columns, 10, '表头列数变了，请同步 panel.ts 的能力开关');
+  const caps = bundle.match(/\{edges:![01],dnsMode:![01],status:![01],devices:![01],accounts:![01],consolidation:![01],note:![01],deviceTunnel:![01]\}/);
+  assert.ok(caps, '找不到面板能力开关');
+  assert.equal(caps[0], '{edges:!0,dnsMode:!0,status:!1,devices:!0,accounts:!0,consolidation:!1,note:!0,deviceTunnel:!1}');
+});
