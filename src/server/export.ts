@@ -45,12 +45,16 @@ export function localTime(value: string | number | Date = new Date()): string {
 
 export function serviceSheet(items: ServiceRow[], suffix: string): Sheet {
   const rows: SheetCell[][] = [[
-    '域名', '访问范围', '连接方式', '目标地址', '协议', '设备', 'DNS 方式', '上游 TLS 主机名', '备注', '管理方式',
+    '域名', '入口归属', '访问范围', '连接方式', '目标地址', '协议', '设备', 'DNS 方式', '上游 TLS 主机名', '备注', '管理方式',
   ]];
   for (const item of items) {
     const tcp = item.scheme === 'tcp';
+    // 注册表收敛成一份后，每条登记声明自己由哪些边缘渲染；缺省与 registry 一致算 home-edge。
+    const edges = item.edges?.length ? item.edges : ['home-edge'];
     rows.push([
       `${item.alias}.${item.suffix || item.domain || suffix}`,
+      edges.includes('localmesh') && edges.includes('home-edge') ? '内外双入口'
+        : edges.includes('localmesh') ? '仅 182 内网' : '仅 home-edge',
       visible[item.visibility ?? 'internal'] ?? item.visibility ?? '',
       tcp ? '现有 TCP 入口' : transport[item.transport ?? 'easytier'] ?? item.transport ?? '',
       tcp ? '—' : `${item.host || '设备本机'}:${item.port ?? ''}`,

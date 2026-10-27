@@ -112,6 +112,7 @@ test('standalone authentication, internal publishing, restart persistence and bl
   assert.equal(full.status, 200);
   const fullText = Object.values(await zipEntries(Buffer.from(await full.arrayBuffer()))).join('');
   assert.ok(fullText.includes('super-secret-&lt;&amp;&gt;'), 'secrets=1 必须导出口令并正确转义');
+  assert.ok(plainText.includes('入口归属'), '服务登记表要带上注册表的边缘归属，不能和界面列不一致');
   assert.equal((await api('/api/export.xlsx', 'GET')).status, 401);
   await api('/api/services', 'PUT', {...item, alias: 'public', visibility: 'public'}, auth);
   assert.equal((await api('/api/apply', 'POST', {}, auth)).status, 400);

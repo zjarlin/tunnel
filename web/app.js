@@ -4,6 +4,7 @@ const words = {
 const $ = id => document.getElementById(id);
 Object.assign(words, {dnsMode:'DNS 方式', managed:'自动管理 DNS', existing:'保留现有公网 DNS', removeExistingConfirm:'删除本地登记与代理？原公网入口和 DNS 会保留，需要在原入口单独关闭。'});
 Object.assign(words, {transport:'连接方式', easytier:'EasyTier / 直连', frp:'FRP 映射', frpHost:'FRP 映射地址', frpPort:'FRP 映射端口', frpPlaceholder:'127.0.0.1 或中转主机名', devicePlaceholder:'留空使用设备本机', frpRemoveConfirm:'已有 FRP 映射仍由原系统管理，需要在原系统单独关闭。', tlsServerName:'上游 TLS 主机名'});
+Object.assign(words, {edges:'入口归属', edgeLocalmesh:'仅 182 内网', edgeHomeEdge:'仅 home-edge', edgeBoth:'内外双入口'});
 Object.assign(words, {copy:'复制地址', copied:'连接地址已复制', open:'打开', tcp:'TCP', managedTcp:'现有 TCP 入口', serviceCount:'项服务', refresh:'刷新'});
 Object.assign(words, {exportServices:'导出 Excel', exportVault:'导出密码本', exportVaultSecrets:'导出（含明文）', exportStarted:'已开始下载导出文件', exportSecretsConfirm:'导出的 Excel 里会包含全部明文密码。确认导出到本机并妥善保管？', vault:'密码本', vaultSearch:'搜索名称 / 分类 / 账号 / 地址', vaultEmpty:'还没有登记凭据，填写下面表单保存第一条。', vaultSave:'保存条目', name:'名称', category:'分类', address:'地址', username:'账号', reveal:'查看并复制', copied:'密码已复制到剪贴板', vaultRemoveConfirm:'删除这条凭据？删除后无法恢复。', vaultSaved:'凭据已加密保存', vaultKeep:'留空保留原密码'});
 document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = words[node.dataset.i18n]; });
