@@ -43,8 +43,10 @@ export function planSync({services, devices, suffix, aliases}) {
       host,
       port: item.port,
       scheme: item.scheme ?? 'http',
-      // 182 侧一律按"仅内网"呈现：公网是否可达由 tunnel 的公网 DNS + 证书决定，不经 182。
-      visibility: 'internal',
+      // 182 的 localmesh 同时承载公网 443（路由器把公网 443 映射到 182，company-ai 就是这样），
+      // 所以这里的站点必须跟控制台一致：public 站点不能在内网侧被降级成 internal，
+      // 否则公网请求会命中 internal 的来源白名单分支被 404 掉。
+      visibility: item.visibility === 'public' ? 'public' : 'internal',
       lan: true,
       note: item.note ?? '',
       stream: true,
@@ -60,7 +62,7 @@ export function planSync({services, devices, suffix, aliases}) {
     const same = current.host === want.host
       && Number(current.port) === Number(want.port)
       && (current.scheme ?? 'http') === want.scheme
-      && (current.visibility ?? 'internal') === 'internal'
+      && (current.visibility ?? 'internal') === want.visibility
       && current.disabled !== true;
     if (!same) { changes.push({alias, kind: '更新', want, current}); }
   }

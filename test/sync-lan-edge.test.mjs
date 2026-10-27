@@ -72,3 +72,26 @@ test('未绑定 EasyTier 地址的设备被跳过而不是写空 host', () => {
   assert.equal(desired.size, 0);
   assert.match(skipped[0], /未绑定/);
 });
+
+test('public 服务同步为 public，不能被降级成 internal（否则公网命中白名单被 404）', () => {
+  const {desired, changes} = planSync({
+    services: [{alias: 'tianjin-web', port: 80, deviceId: 'd2', visibility: 'public'}],
+    devices: [device('d2', '10.144.144.98')],
+    suffix: 'lyokm.cn',
+    aliases: [{alias: 'tianjin-web', host: '10.144.144.98', port: 80, scheme: 'http', visibility: 'internal', lan: true}],
+  });
+  assert.equal(desired.get('tianjin-web').visibility, 'public');
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0].kind, '更新');
+  assert.equal(changes[0].want.visibility, 'public');
+});
+
+test('public 与 internal 的可见性差异本身即可触发同步', () => {
+  const {changes} = planSync({
+    services: [{alias: 'tj-web', port: 80, deviceId: 'd2', visibility: 'public'}],
+    devices: [device('d2', '10.144.144.98')],
+    suffix: 'lyokm.cn',
+    aliases: [{alias: 'tj-web', host: '10.144.144.98', port: 80, scheme: 'http', visibility: 'internal'}],
+  });
+  assert.equal(changes[0].want.visibility, 'public');
+});
