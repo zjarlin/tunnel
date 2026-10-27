@@ -42,6 +42,8 @@ export interface PanelHost {
   deviceFilter(): string;
   /** 收拢旧菜单入口：AIO 侧才有（宿主提供的目录操作），独立站不实现。 */
   consolidate?(): Promise<unknown>;
+  /** 配对设备弹窗里的部署专属补充（AIO 用来编辑设备 SSH 别名）。 */
+  deviceExtras?(device: DomainDevice, group: HTMLElement): void;
   caps?: Partial<PanelCaps>;
 }
 
@@ -376,6 +378,7 @@ export class ServicePanel {
           await this.host.refresh();
         });
         group.append(title, label, save);
+        this.host.deviceExtras?.(device, group);
         container.append(group);
       }
     } catch (error) {
