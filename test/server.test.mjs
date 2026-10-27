@@ -75,8 +75,13 @@ test('standalone authentication, internal publishing, restart persistence and bl
   const item = {alias: 'git', host: '127.0.0.1', port: 8080, scheme: 'http', visibility: 'internal', note: 'test'};
   assert.equal((await api('/api/services', 'PUT', {...item, alias: 'pg', visibility: 'public'}, auth)).status, 400);
   const page = await (await fetch(base)).text();
-  assert.match(page, /select name="transport"/);
-  assert.match(page, /option value="frp"/);
+  assert.match(page, /src="app\.js"/);
+  // 登记表单现在由 web-src/panel.ts 构建（与 AIO 内嵌页共用同一份源码），
+  // 因此 FRP / DNS 方式这些选项在打包后的 app.js 里，不再写死在 HTML。
+  const bundle = await (await fetch(base + '/app.js')).text();
+  assert.match(bundle, /name="transport"/);
+  assert.match(bundle, /value="frp"/);
+  assert.match(bundle, /name="dnsMode"/);
   assert.equal((await api('/api/services', 'PUT', {...item, alias: '../escape'}, auth)).status, 400);
   assert.equal((await api('/api/services', 'PUT', {...item, transport:'unknown'}, auth)).status, 400);
   assert.equal((await api('/api/services', 'PUT', {...item, transport:'frp', host:'', deviceId:'paired-device'}, auth)).status, 400);

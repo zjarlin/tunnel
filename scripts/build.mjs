@@ -11,4 +11,7 @@ await build({...runtime,entryPoints:['src/aio/sidecar.ts'],outfile:'dist/sidecar
 await build({...runtime, entryPoints:['src/server/bindings.ts'], outfile:'dist/bindings.mjs'});
 await build({...runtime, entryPoints:['src/server/targets.ts'], outfile:'dist/targets.mjs'});
 await mkdir('dist/web',{recursive:true});
-await cp('web','dist/web',{recursive:true});
+// 独立控制台：web/ 只留 HTML 与样式，app.js 由 web-src/shell.ts 构建（面板与 AIO 页共用同一份源码）。
+await build({bundle:true,platform:'browser',target:'es2022',format:'esm',entryPoints:['web-src/shell.ts'],outfile:'dist/web/app.js',minify:true,charset:'utf8'});
+await cp('web/index.html','dist/web/index.html');
+await cp('web/style.css','dist/web/style.css');

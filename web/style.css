@@ -14,3 +14,25 @@ dialog{border:1px solid var(--border);border-radius:12px;width:min(900px,95vw);p
 #device-rows td.badge{color:#245bd6;font-weight:650}
 
 #publication.warn{color:#a15c00}
+
+/* ---- 「服务入口」面板（web-src/panel.ts）与 AIO 内嵌页共用同一套类名 ---- */
+.field{display:block;margin:14px 0 8px}
+.field-label{display:flex;align-items:center;gap:6px}
+.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.dialog-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.outline{background:#fff;color:inherit;border-color:#ced7e4}
+.note{color:#8a95a5;font-size:12px;margin-top:14px}
+.data-table-align-end{text-align:end}
+.data-table-cell.actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+[role="alert"],.error{color:#a32f33}
+#domain-status{margin:12px 0;color:#5b6b82;white-space:pre-wrap}
+#domain-status.error{color:#a32f33}
+.hint{position:relative;display:inline-flex}
+.hint>summary{list-style:none;display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;border:1px solid var(--border);background:#fff;color:#7b8797;font-size:12px;font-weight:650;line-height:1;cursor:pointer}
+.hint>summary::-webkit-details-marker{display:none}.hint>summary::marker{content:""}
+.hint>summary:hover,.hint[open]>summary{color:var(--blue);border-color:var(--blue)}
+.hint-body{position:absolute;top:calc(100% + 6px);left:0;z-index:5;width:min(21rem,calc(100vw - 96px));margin:0;padding:9px 11px;border:1px solid var(--border);border-left:2px solid var(--blue);border-radius:6px;background:#fff;color:#5b6b82;font-size:12px;line-height:1.6;box-shadow:0 6px 20px #0003}
+#mesh-devices section{border-bottom:1px solid #edf0f5;padding:10px 0}
+#mesh-devices h3{margin:0 0 6px;font-size:14px}
+#dns-list{flex-wrap:wrap}
+@media(max-width:640px){.field-grid{grid-template-columns:1fr}}

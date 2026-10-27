@@ -64,6 +64,23 @@ docker compose up -d
 注册表已经是唯一一份，旧的单向同步（`tunnel-lan-edge.timer` 把控制台登记抄进内网表）
 已在 2026-10-27 `disable --now`，**不要再启用**。
 
+## 一份前端，两种部署
+
+`web-src/panel.ts` 是「服务入口」面板（表格 + 登记/编辑 + 配对设备 + DNS 账号 + 发布状态）的
+**唯一实现**，`tunnel.addzero.site` 独立控制台与 `aio.addzero.site/?page=space-tunnels` 内嵌页
+跑的是同一份代码，只有两处不同：
+
+| | 独立控制台 | AIO 内嵌页 |
+| --- | --- | --- |
+| transport | `fetch('/api/*')` + cookie 登录 | 宿主代理（`INFRA` 方法 → `/api/runtime/components/<token>/request`） |
+| 能力开关 | 密码本、Excel 导出、入口归属列、DNS 方式、备注列 | 设备隧道入口、发布状态列、合并旧菜单、设备筛选 |
+
+- 独立站的 `dist/web/app.js` 由 `web-src/shell.ts`（登录 / 密码本 / 导出 + 面板）构建，
+  `web/` 只留 `index.html` 与 `style.css`，不再手写业务脚本。
+- AIO 页的那份是 `aio-plugin-device` 仓库里的逐字节副本，由
+  `node scripts/sync-tunnel-panel.mjs` 同步并记录来源 commit + sha256（`--check` 校验漂移）。
+  改面板只改这里，然后同步过去，不要再在设备插件里另写一套表单项。
+
 ## 服务管理
 
 - 「保存并应用」保存表格后立即发布；逐步显示设备端口、DNS 预检、Caddy 和云记录读回状态。全部 DNS 计划通过后才更新 Caddy。

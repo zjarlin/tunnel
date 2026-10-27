@@ -6,35 +6,13 @@
 <main>
 <section id="login" class="login" hidden><h1 data-i18n="welcome"></h1><form id="login-form"><label><span data-i18n="account"></span><input name="user" autocomplete="username" required></label><label><span data-i18n="password"></span><input name="password" type="password" autocomplete="current-password" required></label><button class="primary" data-i18n="login"></button></form></section>
 <section id="workspace" hidden>
-<div class="heading"><div><h1 data-i18n="services"></h1><span id="domain" class="domain"></span></div><div class="actions"><button id="refresh" data-i18n="refresh"></button><button id="devices-button" data-i18n="devices"></button><button id="accounts-button" data-i18n="accounts"></button><button id="export-button" data-i18n="exportServices"></button><button id="vault-button" data-i18n="vault"></button><button id="new-service" data-i18n="add"></button><button id="apply" class="primary" data-i18n="apply"></button></div></div>
-<div class="panel table-wrap"><table><thead><tr><th data-i18n="domain"></th><th data-i18n="edges"></th><th data-i18n="device"></th><th data-i18n="transport"></th><th data-i18n="target"></th><th data-i18n="visibility"></th><th data-i18n="dnsMode"></th><th data-i18n="note"></th><th data-i18n="actions"></th></tr></thead><tbody id="rows"></tbody></table><p id="empty" data-i18n="empty" hidden></p></div>
+<div class="heading"><div><h1 data-i18n="services"></h1><span id="domain" class="domain"></span></div><div class="actions"><span id="panel-tools" class="actions"></span><button id="refresh" data-i18n="refresh"></button><button id="export-button" data-i18n="exportServices"></button><button id="vault-button" data-i18n="vault"></button></div></div>
+<div class="panel table-wrap"><table><thead><tr><th data-i18n="domain"></th><th>入口归属</th><th data-i18n="device"></th><th>连接方式</th><th>目标</th><th>连接地址</th><th>访问范围</th><th>DNS 方式</th><th data-i18n="note"></th><th data-i18n="actions"></th></tr></thead><tbody id="rows"></tbody></table><p id="empty" data-i18n="empty" hidden></p></div>
+<div id="panel-mount"></div>
 <div id="publication" role="status" aria-live="polite"></div>
 </section>
 <p id="message" role="status" aria-live="polite" hidden></p>
 </main>
-<dialog id="service-dialog"><div class="heading"><h2 data-i18n="service"></h2><button type="button" data-close="service-dialog" data-i18n="close"></button></div>
-<form id="service-form" class="service-form">
-<label><span data-i18n="alias"></span><input name="alias" required pattern="[a-z0-9][a-z0-9-]*" placeholder="gitlab"></label>
-<label><span data-i18n="suffix"></span><input name="domain" required></label>
-<label><span data-i18n="device"></span><select name="deviceId" id="device-select"></select></label>
-<label hidden><span data-i18n="transport"></span><select name="transport"><option value="easytier"></option><option value="frp"></option></select></label>
-<label><span id="target-label" data-i18n="target"></span><input name="host"></label>
-<label><span id="port-label" data-i18n="port"></span><input name="port" type="number" min="1" max="65535" required placeholder="8080"></label>
-<label><span data-i18n="scheme"></span><select name="scheme"><option>http</option><option>https</option></select></label>
-<label id="tls-server-name" hidden><span data-i18n="tlsServerName"></span><input name="tlsServerName" disabled></label>
-<label><span data-i18n="visibility"></span><select name="visibility"><option value="internal" data-i18n="internal"></option><option value="public" data-i18n="public"></option></select></label>
-<label><span data-i18n="dnsAccount"></span><select name="accountId" id="account-select"></select></label>
-<label><span data-i18n="dnsMode"></span><select name="dnsMode"><option value="managed" data-i18n="managed"></option><option value="existing" data-i18n="existing"></option></select></label>
-<label><span data-i18n="note"></span><input name="note" maxlength="300"></label>
-<button class="primary" type="submit" data-i18n="saveApply"></button>
-</form></dialog>
-<dialog id="devices-dialog"><div class="heading"><h2 data-i18n="devices"></h2><button data-close="devices-dialog" data-i18n="close"></button></div><p id="devices-hint" data-i18n="publishHint" class="hint" hidden></p><div class="table-wrap"><table><thead><tr><th data-i18n="device"></th><th data-i18n="status"></th><th data-i18n="role"></th><th data-i18n="meshAddress"></th><th data-i18n="actions"></th></tr></thead><tbody id="device-rows"></tbody></table></div><p id="devices-empty" data-i18n="devicesEmpty" hidden></p></dialog>
-<dialog id="accounts-dialog"><div class="heading"><h2 data-i18n="accounts"></h2><button data-close="accounts-dialog" data-i18n="close"></button></div><div id="account-list"></div><form id="account-form" class="service-form">
-<label><span data-i18n="accountId"></span><input name="id" required pattern="[a-z0-9-]+"></label><label><span data-i18n="label"></span><input name="label" required></label>
-<label><span data-i18n="provider"></span><select name="provider"><option value="huawei">华为云</option><option value="dnspod">腾讯云 DNSPod</option><option value="cloudflare">Cloudflare</option></select></label>
-<label><span data-i18n="suffix"></span><input name="domain" required></label><label><span data-i18n="zone"></span><input name="zone"></label><label><span data-i18n="rawHost"></span><input name="rawHost" required></label>
-<label><span>AK / SecretId / Token</span><input name="key" type="password" autocomplete="new-password" placeholder="AK / SecretId / Token"></label><label><span>SK / SecretKey</span><input name="secret" type="password" autocomplete="new-password" placeholder="SK / SecretKey"></label><button class="primary" data-i18n="save"></button>
-</form></dialog>
 <dialog id="vault-dialog"><div class="heading"><h2 data-i18n="vault"></h2><button type="button" data-close="vault-dialog" data-i18n="close"></button></div>
 <div class="heading"><label class="vault-search"><span data-i18n="vaultSearch"></span><input id="vault-search" placeholder="" autocomplete="off"></label><div class="actions"><button type="button" id="vault-export" data-i18n="exportVault"></button><button type="button" id="vault-export-secrets" class="primary" data-i18n="exportVaultSecrets"></button></div></div>
 <div class="table-wrap"><table><thead><tr><th data-i18n="name"></th><th data-i18n="category"></th><th data-i18n="address"></th><th data-i18n="username"></th><th data-i18n="actions"></th></tr></thead><tbody id="vault-rows"></tbody></table><p id="vault-empty" data-i18n="vaultEmpty" hidden></p></div>
