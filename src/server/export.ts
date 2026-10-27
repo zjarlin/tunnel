@@ -10,7 +10,9 @@ import type {Sheet, SheetCell} from './excel.js';
 
 export type ServiceRow = {
   alias: string;
+  suffix?: string;
   domain?: string;
+  edges?: string[];
   scheme?: string;
   host?: string;
   port?: number;
@@ -48,7 +50,7 @@ export function serviceSheet(items: ServiceRow[], suffix: string): Sheet {
   for (const item of items) {
     const tcp = item.scheme === 'tcp';
     rows.push([
-      `${item.alias}.${item.domain || suffix}`,
+      `${item.alias}.${item.suffix || item.domain || suffix}`,
       visible[item.visibility ?? 'internal'] ?? item.visibility ?? '',
       tcp ? '现有 TCP 入口' : transport[item.transport ?? 'easytier'] ?? item.transport ?? '',
       tcp ? '—' : `${item.host || '设备本机'}:${item.port ?? ''}`,

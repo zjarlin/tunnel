@@ -1,5 +1,5 @@
 import {request, Agent} from 'node:http';
-import type {Alias, PortalSettings} from '../config/index.js';
+import {serviceSuffix, type Alias, type PortalSettings} from '../config/index.js';
 import type {Certificate} from './certificates.js';
 
 type CaddyConfig = {
@@ -9,7 +9,7 @@ type CaddyConfig = {
   };
 };
 
-export const serviceDomain = (settings: PortalSettings, item: Alias) => `${item.alias}.${item.domain ?? settings.suffix}`;
+export const serviceDomain = (settings: PortalSettings, item: Alias) => `${item.alias}.${serviceSuffix(settings, item)}`;
 
 // 读取 ETag 后只提交一次带条件的配置更新，避免覆盖并发管理者的修改。
 export function caddyRequest(endpoint: string, path: string, method = 'GET', body?: unknown, agent?: Agent, metadata?: {etag?: string}, headers: Record<string, string> = {}): Promise<unknown> {

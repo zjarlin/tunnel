@@ -48,7 +48,7 @@ function loadSettings(rootOverride) {
   if (merged.caddy && !merged.caddy.sitesDir) merged.caddy.sitesDir = join(root, "caddy", "sites");
   return merged;
 }
-var registryFile = (s) => join(s.portal.root, "aliases.json");
+var registryFile = (s) => s.portal.registryFile ?? process.env.TUNNEL_REGISTRY_FILE ?? join(s.portal.root, "aliases.json");
 function normalizeAlias(item) {
   const visibility = item.visibility ?? (item.lan === false ? "public" : "internal");
   return { ...item, visibility, lan: visibility === "internal" };

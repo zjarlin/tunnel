@@ -33,6 +33,11 @@ export type PortalConfig = {
   aliasesDir?: string;
   mapPrefix: string;
   reload?: boolean;
+  /**
+   * 注册表文件。默认 `<root>/aliases.json`；182 与接口进程共用一份时用
+   * `TUNNEL_REGISTRY_FILE` 指到挂载进来的同一路径，避免各存一份。
+   */
+  registryFile?: string;
 };
 
 export type GatewayConfig = {
@@ -96,9 +101,25 @@ export type PortalSettings = {
  * `visibility` 是安全边界：`internal` 永不产生公网 DNS 记录，且 Caddy 必须同时
  * 绑定入口地址并校验来源网段。旧数据只有 `lan` 字段时按 `internal` 处理。
  */
+/** 条目归属的入口：182 内网 localmesh（aio-portal 渲染）或本服务的 home-edge。 */
+export type Edge = 'localmesh' | 'home-edge';
+
 export type Alias = {
   alias: string;
+  /** 域名后缀。`domain` 是控制台的历史字段，两者同义，取值以 `suffix` 优先。 */
+  suffix?: string;
   domain?: string;
+  /**
+   * 该条目由哪些入口渲染。缺省按 `home-edge`（本服务的既有语义）处理，
+   * 一条登记可以同时被两个入口渲染，但登记数据只有这一份。
+   */
+  edges?: Edge[];
+  /** 停用：保留登记但所有入口都不再渲染它。 */
+  disabled?: boolean;
+  /** SSE/长连接友好：代理侧关闭缓冲。 */
+  stream?: boolean;
+  /** 显式证书（182 public 站点使用）；本服务不消费，读写时原样保留。 */
+  tls?: {cert: string; key: string};
   deviceId?: string;
   accountId?: string;
   dnsMode?: 'managed' | 'existing';
@@ -160,7 +181,20 @@ export function loadSettings(rootOverride?: string): PortalSettings {
   return merged;
 }
 
-export const registryFile = (s: PortalSettings) => join(s.portal.root, 'aliases.json');
+export const registryFile = (s: PortalSettings) =>
+  s.portal.registryFile ?? process.env.TUNNEL_REGISTRY_FILE ?? join(s.portal.root, 'aliases.json');
+
+/** 条目域名后缀：单条 `suffix` > 单条 `domain` > 全局配置。 */
+export const serviceSuffix = (s: PortalSettings, item: Pick<Alias, 'suffix' | 'domain'>): string =>
+  item.suffix ?? item.domain ?? s.suffix;
+
+/** 未写 `edges` 的历史条目仍然只由本服务发布，行为与收敛前一致。 */
+export const edgesOf = (item: Pick<Alias, 'edges'>): Edge[] =>
+  item.edges && item.edges.length ? item.edges : ['home-edge'];
+
+/** 是否由指定入口渲染；停用条目一律不渲染。 */
+export const rendersOn = (item: Pick<Alias, 'edges' | 'disabled'>, edge: Edge): boolean =>
+  !item.disabled && edgesOf(item).includes(edge);
 
 /** 对旧数据做归一：`visibility` 缺省时按 `lan` 推导，缺省视作 internal。 */
 export function normalizeAlias(item: Alias): Alias {

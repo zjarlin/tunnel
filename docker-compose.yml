@@ -18,6 +18,8 @@ services:
     volumes:
       - ./release/dist:/app:ro
       - ./data:/data
+      # 唯一注册表：与 182 内网入口（aio-portal）共用同一份 aliases.json。
+      - ${TUNNEL_REGISTRY_DIR:?}:/registry
     tmpfs:
       - /tmp:size=16m,mode=1777
     healthcheck:

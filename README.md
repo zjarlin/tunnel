@@ -42,6 +42,21 @@ docker compose up -d
 
 在现役 Caddy 为 `TUNNEL_PUBLIC_URL` 对应域名配置反向代理，目标为 `TUNNEL_BIND:TUNNEL_PORT`。部署者负责该域名 DNS、证书与公网端口可达性。不要把 Caddy 管理端口暴露到公网。
 
+## 唯一注册表（与服务门户共用）
+
+服务登记只有一份文件（默认 `$TUNNEL_DATA/aliases.json`，182 上是 `/root/DockerCompose/aio-portal/aliases.json`）。
+控制台与 `aio-portal`（182 内网入口）读写的都是它，每条登记用 `edges` 声明由哪些入口渲染：
+
+- `localmesh`：182 的 localmesh Caddy + dnsmasq，由 `aio-portal sync` 落地产物；
+- `home-edge`：本控制台发布的外部入口（Caddy admin + 公网 DNS + 证书）。
+
+本服务只发布 `edges` 含 `home-edge` 且未停用的条目；`disabled: true` 两个入口都不渲染。
+控制台保存表单时只改自己那几个字段，`edges`、`stream`、`tls`、`suffix` 等由别的入口写入的字段原样保留。
+
+从"两套表"迁移到一套时用 `node scripts/migrate-shared-registry.mjs [--apply] [--mirror <路径>]`（幂等：
+已带 `edges` 的条目不再改动；两侧都有且内网侧停用的条目只归 `home-edge`，例如人工站点接管的 s3/tc）。
+迁移完成后旧的单向同步（`tunnel-lan-edge.timer` 把控制台登记抄进内网表）应当退役，只留这份共享表。
+
 ## 服务管理
 
 - 「保存并应用」保存表格后立即发布；逐步显示设备端口、DNS 预检、Caddy 和云记录读回状态。全部 DNS 计划通过后才更新 Caddy。
