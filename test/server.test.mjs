@@ -7,6 +7,25 @@ import {join} from 'node:path';
 import {createServer, request} from 'node:http';
 import {once} from 'node:events';
 
+/** 用 Node 自带 zlib 展开 xlsx 里的各个 XML，只关心「有没有这段文本」。 */
+async function zipEntries(buffer) {
+  const {inflateRawSync} = await import('node:zlib');
+  const files = {};
+  let offset = 0;
+  while (buffer.readUInt32LE(offset) === 0x04034b50) {
+    const method = buffer.readUInt16LE(offset + 8);
+    const size = buffer.readUInt32LE(offset + 18);
+    const nameLength = buffer.readUInt16LE(offset + 26);
+    const extraLength = buffer.readUInt16LE(offset + 28);
+    const name = buffer.subarray(offset + 30, offset + 30 + nameLength).toString('utf8');
+    const start = offset + 30 + nameLength + extraLength;
+    const data = buffer.subarray(start, start + size);
+    files[name] = (method === 8 ? inflateRawSync(data) : data).toString('utf8');
+    offset = start + size;
+  }
+  return files;
+}
+
 async function ready(child) {
   await Promise.race([
     once(child.stdout, 'data'),
@@ -28,6 +47,8 @@ test('standalone authentication, internal publishing, restart persistence and bl
   caddy.listen(0, '127.0.0.1'); await once(caddy, 'listening');
   const env = {...process.env, TUNNEL_DATA: dir, TUNNEL_DOMAIN: 'example.test', TUNNEL_RAW_HOST: 'raw.example.test', TUNNEL_LAN_IP: '127.0.0.1', TUNNEL_ALLOWED_CIDRS: '127.0.0.1/32', TUNNEL_BIND: '127.0.0.1', TUNNEL_PORT: String(port), TUNNEL_PUBLIC_URL: `http://127.0.0.1:${port}`, TUNNEL_ADMIN_USER: 'tester', TUNNEL_ADMIN_PASSWORD: 'test-only-password', TUNNEL_API_TOKEN: 'test-api-token', TUNNEL_CADDY_ADMIN: `http://127.0.0.1:${caddy.address().port}`, TUNNEL_CF_TOKEN: '', TUNNEL_CF_ZONE: ''};
   env.TUNNEL_EXTRA_ORIGINS = 'http://127.0.0.1:8443';
+  // 密码本导出需要真实密钥；测试用固定 32 字节，不涉及任何线上凭据。
+  env.TUNNEL_SECRET_KEY = Buffer.alloc(32, 7).toString('base64');
   env.TUNNEL_TCP_CATALOG = join(dir, 'tcp.json');
   writeFileSync(env.TUNNEL_TCP_CATALOG, JSON.stringify({version: 1, items: [{alias: 'pg', domain: 'example.test', port: 5432, deviceLabel: 'paired-host', note: 'PostgreSQL'}]}));
   let child = spawn(process.execPath, ['dist/server.mjs'], {env, stdio: ['ignore', 'pipe', 'inherit']});
@@ -74,6 +95,24 @@ test('standalone authentication, internal publishing, restart persistence and bl
   assert.ok(subjects.includes('other.example.test'));
   assert.equal(changes[0].apps.http.servers.test.routes[0].handle[0].routes[0].handle[0].routes[0].match[0].remote_ip.ranges[0], '127.0.0.1/32');
   assert.equal(changes[0].apps.http.servers.test.routes[0].handle[0].routes[0].handle[0].routes[1].handle[0].status_code, 404);
+  // 导出：两个工作表、默认脱敏、secrets=1 才带明文。
+  assert.equal((await api('/api/vault', 'PUT', {name: '测试库', category: '数据库', url: 'raw.example.test:5432', username: 'tester', password: 'super-secret-<&>', note: '导出用'}, auth)).status, 200);
+  const plain = await api('/api/export.xlsx', 'GET', undefined, auth);
+  assert.equal(plain.status, 200);
+  assert.equal(plain.headers.get('content-type'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  assert.match(plain.headers.get('content-disposition'), /filename\*=UTF-8''/);
+  const plainZip = await zipEntries(Buffer.from(await plain.arrayBuffer()));
+  const plainText = Object.values(plainZip).join('');
+  assert.ok(plainText.includes('服务登记') && plainText.includes('密码本'));
+  assert.ok(plainText.includes('git.example.test'), '服务登记表必须含当前服务');
+  assert.ok(!plainText.includes('super-secret-'), '默认导出不得包含明文口令');
+  assert.ok(plainText.includes('（已登记，未导出明文）'), '默认导出必须标明口令已登记但未导出，而不是误报未登记');
+  assert.ok(!plainText.includes('（未登记）'), '已保存口令的条目不能被标注成未登记');
+  const full = await api('/api/export.xlsx?secrets=1', 'GET', undefined, auth);
+  assert.equal(full.status, 200);
+  const fullText = Object.values(await zipEntries(Buffer.from(await full.arrayBuffer()))).join('');
+  assert.ok(fullText.includes('super-secret-&lt;&amp;&gt;'), 'secrets=1 必须导出口令并正确转义');
+  assert.equal((await api('/api/export.xlsx', 'GET')).status, 401);
   await api('/api/services', 'PUT', {...item, alias: 'public', visibility: 'public'}, auth);
   assert.equal((await api('/api/apply', 'POST', {}, auth)).status, 400);
   assert.equal(changes.length, 1, 'blocked DNS must not publish Caddy changes');

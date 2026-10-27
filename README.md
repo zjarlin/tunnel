@@ -70,6 +70,15 @@ docker compose up -d
 - 接口：`GET /api/vault`、`PUT /api/vault`、`POST /api/vault/reveal`、`DELETE /api/vault/<id>`，与其它接口一样接受控制台会话或 `TUNNEL_API_TOKEN`（AIO 侧车走 `/api/aio` 信封）。
 - 备份：密码本与 DNS 账号一起备份 `data/vault.enc` 与 `TUNNEL_SECRET_KEY`；丢失密钥即无法恢复，禁止只备份密文。
 
+### 导出 Excel
+
+控制台右上角「导出 Excel」与密码本窗口内的两个按钮，下载同一个 `GET /api/export.xlsx`：
+
+- 工作簿含三张表：「服务登记」（域名 / 访问范围 / 连接方式 / 目标 / 协议 / 设备 / DNS 方式 / 备注）、「密码本」、「导出说明」（导出时间、控制台地址、条数、是否含明文）。
+- **默认不导出明文口令**，密码列只写「已登记，未导出明文」；点「导出（含明文）」并二次确认后才带 `?secrets=1`，口令以明文落在本机文件里，请在服务端日志 `vault export xlsx <条数>` 与二次确认上把关。
+- 只依赖 Node 内置 `zlib` 手写 OOXML（`src/server/excel.ts`），不引入第三方表格库；表头加粗、冻结首行、列宽按内容自适应，单元格超 32000 字符会截断。
+- AIO 侧车只能回 JSON，导出固定在独立控制台；侧车调用该接口返回 400。
+
 ## 天津服务登记约定
 
 - 设备隧道在 AIO「设备助手 → 内网服务」登记，命名 `tj-<服务>`（tianjin-server）与 `tjai-<服务>`（tianjin AI 机），域名后缀统一 `lyokm.cn`。

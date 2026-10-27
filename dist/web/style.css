@@ -4,6 +4,6 @@ dialog{border:1px solid var(--border);border-radius:12px;width:min(900px,95vw);p
 
 # 密码本（服务入口控制台）：搜索框与行操作按钮
 #vault-dialog{width:min(1100px,96vw)}
-.vault-search{margin:0 0 16px;max-width:460px}
+.vault-search{margin:0 0 16px;max-width:460px}.heading>.vault-search{margin:0;flex:1 1 320px}
 #vault-rows td:last-child button{margin-right:6px}
 #vault-empty{padding:20px;color:#8a95a5;text-align:center}

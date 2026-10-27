@@ -5,7 +5,7 @@ const $ = id => document.getElementById(id);
 Object.assign(words, {dnsMode:'DNS 方式', managed:'自动管理 DNS', existing:'保留现有公网 DNS', removeExistingConfirm:'删除本地登记与代理？原公网入口和 DNS 会保留，需要在原入口单独关闭。'});
 Object.assign(words, {transport:'连接方式', easytier:'EasyTier / 直连', frp:'FRP 映射', frpHost:'FRP 映射地址', frpPort:'FRP 映射端口', frpPlaceholder:'127.0.0.1 或中转主机名', devicePlaceholder:'留空使用设备本机', frpRemoveConfirm:'已有 FRP 映射仍由原系统管理，需要在原系统单独关闭。', tlsServerName:'上游 TLS 主机名'});
 Object.assign(words, {copy:'复制地址', copied:'连接地址已复制', open:'打开', tcp:'TCP', managedTcp:'现有 TCP 入口', serviceCount:'项服务', refresh:'刷新'});
-Object.assign(words, {vault:'密码本', vaultSearch:'搜索名称 / 分类 / 账号 / 地址', vaultEmpty:'还没有登记凭据，填写下面表单保存第一条。', vaultSave:'保存条目', name:'名称', category:'分类', address:'地址', username:'账号', reveal:'查看并复制', copied:'密码已复制到剪贴板', vaultRemoveConfirm:'删除这条凭据？删除后无法恢复。', vaultSaved:'凭据已加密保存', vaultKeep:'留空保留原密码'});
+Object.assign(words, {exportServices:'导出 Excel', exportVault:'导出密码本', exportVaultSecrets:'导出（含明文）', exportStarted:'已开始下载导出文件', exportSecretsConfirm:'导出的 Excel 里会包含全部明文密码。确认导出到本机并妥善保管？', vault:'密码本', vaultSearch:'搜索名称 / 分类 / 账号 / 地址', vaultEmpty:'还没有登记凭据，填写下面表单保存第一条。', vaultSave:'保存条目', name:'名称', category:'分类', address:'地址', username:'账号', reveal:'查看并复制', copied:'密码已复制到剪贴板', vaultRemoveConfirm:'删除这条凭据？删除后无法恢复。', vaultSaved:'凭据已加密保存', vaultKeep:'留空保留原密码'});
 document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = words[node.dataset.i18n]; });
 document.querySelectorAll('[data-close]').forEach(node => { node.onclick = () => $(node.dataset.close).close(); });
 const hosted = Boolean(window.aioPlugin);
@@ -47,7 +47,9 @@ function connectionFields() {
 async function refresh() {
   const [registry, deviceList, accountList] = await Promise.all([api('/api/services'), api('/api/devices'), api('/api/accounts')]);
   devices = deviceList.items; accounts = accountList.items; domain = registry.domain;
-  $('login').hidden = true; $('workspace').hidden = false; $('logout').hidden = hosted; $('domain').textContent = `${domain} · ${registry.items.length} ${words.serviceCount}`;
+  $('login').hidden = true; $('workspace').hidden = false; $('logout').hidden = hosted;
+  // AIO 侧车只能回 JSON，Excel 下载只在独立控制台可用。
+  $('export-button').hidden = hosted; $('vault-export').hidden = hosted; $('vault-export-secrets').hidden = hosted; $('domain').textContent = `${domain} · ${registry.items.length} ${words.serviceCount}`;
   $('rows').replaceChildren(); $('empty').hidden = registry.items.length > 0;
   $('device-select').replaceChildren(option('', words.direct), ...devices.map(item => option(item.id, `${item.label} · ${words[item.status] || item.status}${item.address ? '' : ` · ${words.bindRequired}`}`)));
   $('account-select').replaceChildren(option('', words.defaultAccount), ...accounts.map(item => option(item.id, `${item.label} · ${item.domain}`)));
@@ -201,5 +203,22 @@ $('vault-form').onsubmit = async event => {
     event.target.reset(); vaultEditing = ''; event.target.elements.password.placeholder = '';
     await refreshVault(); message(words.vaultSaved);
   } catch (error) { message(error.message, true); }
+};
+// ---- Excel 导出 ------------------------------------------------------------
+// 走浏览器原生下载而不是 fetch：导出文件可能几百 KB，用回环 127.0.0.1 的 cookie 同源下载最省事。
+function downloadExport(query = '') {
+  const link = document.createElement('a');
+  link.href = `/api/export.xlsx${query}`;
+  link.rel = 'noopener';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  message(words.exportStarted);
+}
+$('export-button').onclick = () => { downloadExport(); };
+$('vault-export').onclick = () => { downloadExport(); };
+$('vault-export-secrets').onclick = () => {
+  if (!confirm(words.exportSecretsConfirm)) { return; }
+  downloadExport('?secrets=1');
 };
 refresh().catch(error => { if (hosted) { message(error.message, true); } });

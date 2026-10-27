@@ -97,5 +97,10 @@ export function vault(root: string) {
     },
     // 供 AIO 侧车与 CLI 复用：仅在服务端进程内可用，不经过 HTTP。
     get: (id: string): VaultEntry | undefined => all().find(item => item.id === id),
+    /**
+     * 仅供服务端导出使用：返回含明文口令的全部条目。
+     * 绝不直接挂到 HTTP 列表接口上，调用方必须自行决定是否落在响应体里。
+     */
+    dump: (): VaultEntry[] => all().sort((left, right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name)),
   };
 }

@@ -4,6 +4,8 @@ import {access} from './access.js';
 import {settings, required} from './settings.js';
 import {serviceRegistry} from './services.js';
 import {vault} from './vault.js';
+import {buildWorkbook} from './excel.js';
+import {contentDisposition, infoSheet, localTime, serviceSheet, vaultSheet} from './export.js';
 
 const config = settings();
 const origin = new URL(required('TUNNEL_PUBLIC_URL')).origin;
@@ -72,6 +74,28 @@ const server = createServer(async (request, response) => {
     if (method === 'PUT' && path === '/api/devices') { send(200, await services.devices.bind(await data())); return; }
     if (method === 'GET' && path === '/api/accounts') { send(200, {items: services.accounts.list()}); return; }
     if (method === 'PUT' && path === '/api/accounts') { send(200, services.accounts.save(await data())); return; }
+    if (method === 'GET' && path === '/api/export.xlsx') {
+      // AIO 侧车只能回 JSON，导出限定在独立控制台；口令默认不导出，必须显式 secrets=1。
+      if (aio) { send(400, {error: '请在独立控制台执行导出'}); return; }
+      const secrets = new URL(request.url ?? '/', 'http://localhost').searchParams.get('secrets') === '1';
+      const items = services.list();
+      const entries = secrets ? book.dump() : book.list();
+      const exportedAt = localTime();
+      const sheet = (secrets ? '密码本-含明文' : '密码本') + `-${exportedAt.slice(0, 10)}`;
+      const workbook = buildWorkbook([
+        serviceSheet(items, config.suffix),
+        vaultSheet(entries, secrets),
+        infoSheet({exportedAt, console: origin, secrets, services: items.length, entries: entries.length}),
+      ]);
+      if (secrets) { console.log(`vault export xlsx ${entries.length} entries`); }
+      response.writeHead(200, {
+        'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'content-length': String(workbook.length),
+        'content-disposition': contentDisposition(sheet + '.xlsx'),
+      });
+      response.end(workbook);
+      return;
+    }
     if (method === 'GET' && path === '/api/vault') { send(200, {items: book.list()}); return; }
     if (method === 'PUT' && path === '/api/vault') { send(200, book.save(await data())); return; }
     if (method === 'POST' && path === '/api/vault/reveal') {
