@@ -142,6 +142,8 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
       assertIdle(); active = true;
       const steps: Array<{step: string; state: string; detail?: string}> = [];
       function record(step: string, state: string, detail?: string) {
+        // 上一步还停在「发布中」说明它已经做完：进入下一步时收口，发布记录不出现悬空的进度。
+        for (const item of steps) { if (item.state === 'running') { item.state = 'success'; } }
         steps.push({step, state, ...(detail ? {detail} : {})});
         writeFileSync(statusFile, JSON.stringify({at: Date.now(), state: state === 'failed' ? 'failed' : 'running', steps}), {mode: 0o600});
       }
