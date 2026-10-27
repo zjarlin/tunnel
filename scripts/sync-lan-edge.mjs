@@ -47,6 +47,10 @@ export function planSync({services, devices, suffix, aliases}) {
       // 所以这里的站点必须跟控制台一致：public 站点不能在内网侧被降级成 internal，
       // 否则公网请求会命中 internal 的来源白名单分支被 404 掉。
       visibility: item.visibility === 'public' ? 'public' : 'internal',
+      // aio-portal 要求 public 条目带显式授权人，否则 lan-allowlist 校验失败会让整次 sync 被拒。
+      // 公网可见性是在 tunnel 控制台授权的，这里如实转发那条授权来源；internal 不写，
+      // 免得覆盖注册表里其它来源写入的字段。
+      ...(item.visibility === 'public' ? {authorizedBy: item.authorizedBy || 'tunnel-console'} : {}),
       lan: true,
       note: item.note ?? '',
       stream: true,
@@ -56,17 +60,24 @@ export function planSync({services, devices, suffix, aliases}) {
 
   const existing = new Map(aliases.map(item => [item.alias, item]));
   const changes = [];
+  const disabled = [];
   for (const [alias, want] of desired) {
     const current = existing.get(alias);
     if (!current) { changes.push({alias, kind: '新增', want}); continue; }
+    // 182 侧被人手工 disable 的条目保持停用：站点改由 localmesh 确定性托管
+    // （s3.lyokm.cn / tc.lyokm.cn 即此情形），在这里重新启用会让 sync 再生成一份
+    // 同名站点，Caddy 报 "ambiguous site definition" 并拒绝 reload。
+    if (current.disabled === true) { disabled.push(alias); continue; }
     const same = current.host === want.host
       && Number(current.port) === Number(want.port)
       && (current.scheme ?? 'http') === want.scheme
       && (current.visibility ?? 'internal') === want.visibility
-      && current.disabled !== true;
+      // 公网授权人缺失也算差异：老条目在本脚本补授权人之前写入，
+      // 不补就会被 aio-portal 的 lan-allowlist 校验整次拒绝。
+      && (!want.authorizedBy || current.authorizedBy === want.authorizedBy);
     if (!same) { changes.push({alias, kind: '更新', want, current}); }
   }
-  return {desired, existing, changes, skipped};
+  return {desired, existing, changes, skipped, disabled};
 }
 
 /** 把差异合并进注册表条目（只覆盖 tunnel 自己的字段，保留其他来源写入的字段）。 */
@@ -97,7 +108,7 @@ async function main() {
   const [services, devices] = await Promise.all([get('/api/services'), get('/api/devices')]);
   const suffix = JSON.parse(readFileSync(`${home}/aio-portal.json`, 'utf8')).suffix;
   const registryData = JSON.parse(readFileSync(registry, 'utf8'));
-  const {desired, existing, changes, skipped} = planSync({
+  const {desired, existing, changes, skipped, disabled} = planSync({
     services: services.items,
     devices: devices.items,
     suffix,
@@ -109,6 +120,7 @@ async function main() {
     console.log(`${change.kind} ${change.alias} -> ${change.want.host}:${change.want.port}${before}`);
   }
   if (skipped.length) { console.log(`跳过非 ${suffix} 域名或未就绪的登记：${skipped.join('、')}`); }
+  if (disabled.length) { console.log(`保持停用（182 侧已 disable，改由 localmesh 托管）：${disabled.join('、')}`); }
   if (!changes.length) { console.log(`内网入口已同步（${desired.size} 条 tunnel 服务，0 处差异）`); return; }
   if (dryRun) { console.log(`dry-run：共 ${changes.length} 处需要同步，未写入`); return; }
 

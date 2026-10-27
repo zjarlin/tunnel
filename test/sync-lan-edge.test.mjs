@@ -47,6 +47,45 @@ test('已一致的条目不产生差异（幂等）', () => {
   assert.deepEqual(changes, []);
 });
 
+test('public 条目同步时带上授权人，否则 aio-portal 的策略校验会拒绝整次 sync', () => {
+  const {desired} = planSync({
+    services: [
+      {alias: 'tc', port: 8111, deviceId: 'd1', visibility: 'public'},
+      {alias: 'dev', port: 48090, deviceId: 'd1', visibility: 'internal'},
+    ],
+    devices: [device('d1', '10.144.144.1')],
+    suffix: 'lyokm.cn',
+    aliases: [],
+  });
+  assert.equal(desired.get('tc').authorizedBy, 'tunnel-console');
+  assert.equal(desired.get('dev').authorizedBy, undefined);
+});
+
+test('public 条目缺少授权人时算差异，用于补齐老登记', () => {
+  const aliases = [{alias: 'tc', host: '127.0.0.1', port: 8111, scheme: 'http', visibility: 'public', disabled: false}];
+  const plan = planSync({
+    services: [{alias: 'tc', port: 8111, deviceId: 'd1', visibility: 'public'}],
+    devices: [device('d1', '10.144.144.1')],
+    suffix: 'lyokm.cn',
+    aliases,
+  });
+  assert.equal(plan.changes.length, 1);
+  assert.equal(mergeChanges(plan.existing, plan.changes)[0].authorizedBy, 'tunnel-console');
+});
+
+test('182 侧手工 disable 的条目保持停用，不会被定时器重新启用', () => {
+  const aliases = [{alias: 's3', host: '127.0.0.1', port: 9900, scheme: 'http', visibility: 'internal', disabled: true}];
+  const plan = planSync({
+    services: [{alias: 's3', port: 9900, deviceId: 'd1'}],
+    devices: [device('d1', '10.144.144.1')],
+    suffix: 'lyokm.cn',
+    aliases,
+  });
+  assert.deepEqual(plan.changes, [], '已停用的条目不能被写回 disabled:false');
+  assert.deepEqual(plan.disabled, ['s3']);
+  assert.equal(mergeChanges(plan.existing, plan.changes)[0].disabled, true);
+});
+
 test('端口变化算更新，合并时保留非 tunnel 字段', () => {
   const aliases = [{alias: 'tc', host: '127.0.0.1', port: 8110, scheme: 'http', visibility: 'internal', authorizedBy: 'tester'}];
   const plan = planSync({
