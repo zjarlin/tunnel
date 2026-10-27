@@ -57,7 +57,10 @@ async function refresh() {
     const device = devices.find(entry => entry.id === item.deviceId);
     const hostname = `${item.alias}.${item.domain || domain}`;
     const endpoint = item.scheme === 'tcp' ? `${hostname}:${item.port}` : `https://${hostname}/`;
-    const row = cells([item.scheme === 'tcp' ? endpoint : hostname, item.deviceLabel || (item.deviceId ? device?.label || words.revoked : words.direct), item.scheme === 'tcp' ? words.tcp : words[item.transport || 'easytier'], `${item.scheme}://${item.host || device?.address || words.configuredHost}:${item.port}`, words[item.visibility], words[item.dnsMode || 'managed'], item.note]);
+    const owned = item.edges?.length ? item.edges : ['home-edge'];
+    const edgeLabel = owned.includes('localmesh') && owned.includes('home-edge') ? words.edgeBoth
+      : owned.includes('localmesh') ? words.edgeLocalmesh : words.edgeHomeEdge;
+    const row = cells([item.scheme === 'tcp' ? endpoint : hostname, edgeLabel, item.deviceLabel || (item.deviceId ? device?.label || words.revoked : words.direct), item.scheme === 'tcp' ? words.tcp : words[item.transport || 'easytier'], `${item.scheme}://${item.host || device?.address || words.configuredHost}:${item.port}`, words[item.visibility], words[item.dnsMode || 'managed'], item.note]);
     const actions = document.createElement('td'); actions.className = 'actions';
     actions.append(button(words.copy, async () => {
       try { await navigator.clipboard.writeText(endpoint); message(words.copied); } catch (error) { message(`${endpoint} · ${error.message}`, true); }
