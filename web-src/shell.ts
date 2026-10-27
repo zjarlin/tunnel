@@ -35,7 +35,15 @@ function message(text: string, error = false): void {
   node.hidden = false;
 }
 
+/** 同一份页面有三种落地方式：独立站（cookie 登录）、AIO 宿主内嵌（window.aioPlugin 代理）、
+ *  以及设备助手的 `space-tunnels` 页（那份用的是 web-src/panel.ts 的副本 + 自己的桥）。
+ *  这里只处理前两种：宿主注入 aioPlugin 时改走宿主代理，登录与导出按钮都不出现。 */
+const hosted = typeof (window as unknown as {aioPlugin?: {json<T>(method: string, path: string, data?: unknown): Promise<T>}}).aioPlugin !== 'undefined';
+
 async function api<T>(path: string, method = 'GET', data?: unknown): Promise<T> {
+  if (hosted) {
+    return (window as unknown as {aioPlugin: {json<T>(method: string, path: string, data?: unknown): Promise<T>}}).aioPlugin.json<T>(method, path, data);
+  }
   const response = await fetch(path, {method, credentials: 'same-origin', headers: data === undefined ? {} : {'content-type': 'application/json'}, body: data === undefined ? undefined : JSON.stringify(data)});
   const value = await response.json();
   if (!response.ok) {
@@ -80,7 +88,11 @@ async function load(): Promise<void> {
   domain = registry.domain;
   $('login').hidden = true;
   $('workspace').hidden = false;
-  $('logout').hidden = false;
+  $('logout').hidden = hosted;
+  // 宿主只能回 JSON，Excel 下载只在独立控制台可用。
+  $('export-button').hidden = hosted;
+  $('vault-export').hidden = hosted;
+  $('vault-export-secrets').hidden = hosted;
   $('domain').textContent = `${domain} · ${registry.items.length} ${words.serviceCount}`;
   $('rows').replaceChildren(...panel.rows());
   $('empty').hidden = registry.items.length > 0;
