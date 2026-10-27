@@ -44,8 +44,9 @@ docker compose up -d
 
 ## 唯一注册表（与服务门户共用）
 
-服务登记只有一份文件（默认 `$TUNNEL_DATA/aliases.json`，182 上是 `/root/DockerCompose/aio-portal/aliases.json`）。
-控制台与 `aio-portal`（182 内网入口）读写的都是它，每条登记用 `edges` 声明由哪些入口渲染：
+服务登记只有一份，存在统一 postgres 的 `aio` 库 `portal.service` 一张表里
+（`alias` 主键 + `data jsonb`，schema 见 `src/portal/schema.sql`）。
+控制台与 `aio-portal`（182 内网入口）读写同一条记录，每条登记用 `edges` 声明由哪些入口渲染：
 
 - `localmesh`：182 的 localmesh Caddy + dnsmasq，由 `aio-portal sync` 落地产物；
 - `home-edge`：本控制台发布的外部入口（Caddy admin + 公网 DNS + 证书）。
@@ -53,9 +54,15 @@ docker compose up -d
 本服务只发布 `edges` 含 `home-edge` 且未停用的条目；`disabled: true` 两个入口都不渲染。
 控制台保存表单时只改自己那几个字段，`edges`、`stream`、`tls`、`suffix` 等由别的入口写入的字段原样保留。
 
-从"两套表"迁移到一套时用 `node scripts/migrate-shared-registry.mjs [--apply] [--mirror <路径>]`（幂等：
-已带 `edges` 的条目不再改动；两侧都有且内网侧停用的条目只归 `home-edge`，例如人工站点接管的 s3/tc）。
-迁移完成后旧的单向同步（`tunnel-lan-edge.timer` 把控制台登记抄进内网表）应当退役，只留这份共享表。
+连接串取自 `TUNNEL_REGISTRY_DATABASE_URL`（容器里指向统一 postgres 的 `portal_rw`）。
+**只有**在没有连接串时（本地开发 / CI）才回落到 `$TUNNEL_DATA/aliases.json` 文件驱动；
+配了连接串却连不上会直接报错，不会静默改读文件。
+
+历史 JSON 注册表用 `aio-plugin-portal import --from <aliases.json>` 一次性灌进数据库（幂等：
+已存在的别名以数据库为准）。从"两套表"迁移到一套时用
+`node scripts/migrate-shared-registry.mjs [--apply] [--mirror <路径>]`。
+注册表已经是唯一一份，旧的单向同步（`tunnel-lan-edge.timer` 把控制台登记抄进内网表）
+已在 2026-10-27 `disable --now`，**不要再启用**。
 
 ## 服务管理
 

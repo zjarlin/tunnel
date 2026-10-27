@@ -58,16 +58,16 @@ async function main(): Promise<void> {
       const visibility = values.visibility ?? (values['no-lan'] || !values.lan ? 'public' : 'internal');
       if (visibility !== 'internal' && visibility !== 'public') throw new Error('--visibility 只能是 internal 或 public');
       const authorizedBy = values['authorized-by'];
-      console.log(add({alias: argument, host: values.host, port: values.port, scheme: values.scheme, note: values.note, visibility, authorizedBy, home: values.home}));
+      console.log(await add({alias: argument, host: values.host, port: values.port, scheme: values.scheme, note: values.note, visibility, authorizedBy, home: values.home}));
       return;
     }
     case 'remove': {
       if (!argument) throw new Error('remove 需要别名');
-      console.log(removeAlias({alias: argument, home: values.home}));
+      console.log(await removeAlias({alias: argument, home: values.home}));
       return;
     }
     case 'list':
-      console.log(list({home: values.home}));
+      console.log(await list({home: values.home}));
       return;
     case 'plan':
       console.log(await plan({home: values.home}));
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
       console.log(await sync({home: values.home, apply: values.apply}));
       return;
     case 'doctor':
-      console.log(doctor({home: values.home}));
+      console.log(await doctor({home: values.home}));
       return;
     case 'warden':
       console.log(await warden({password: values.password, apply: values.apply, restore: values.restore, home: values.home}));

@@ -1,6 +1,6 @@
 import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {rendersOn, serviceSuffix, type Alias, type Edge, type PortalSettings} from '../config/index.js';
-import {readAliases, upsert, remove} from '../portal/registry.js';
+import {hydrate, readAliases, upsert, remove} from '../portal/registry.js';
 import {dnsProvider} from '../portal/providers.js';
 import {publish, serviceDomain} from './caddy.js';
 import {deviceDirectory, probe, validHost} from './devices.js';
@@ -88,14 +88,16 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
   return {
     devices, accounts: credentials, assertIdle,
     status: () => existsSync(statusFile) ? JSON.parse(readFileSync(statusFile, 'utf8')) : null,
-    list: () => {
+    async list() {
+      await hydrate(settings);
       const aliases = readAliases(settings);
       const endpoints = tcp();
       if (aliases.some(item => endpoints.some(endpoint => endpoint.alias === item.alias))) { throw new Error('HTTP 与 TCP 服务别名冲突，请检查入口配置'); }
       return [...aliases, ...endpoints].sort((a, b) => a.alias.localeCompare(b.alias));
     },
-    save: (value: Record<string, unknown>) => {
+    async save(value: Record<string, unknown>) {
       assertIdle();
+      await hydrate(settings);
       assertHttp(value.alias);
       const old = readAliases(settings).find(item => item.alias === value.alias);
       // 表单只提交自己管的字段：域名后缀没改时沿用登记里的值，不能因为没带就退回全局后缀。
@@ -107,7 +109,11 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
       if (old && (serviceSuffix(settings, old) !== serviceSuffix(settings, entry) || old.accountId !== entry.accountId)) { throw new Error('迁移域名或 DNS 账号前请先删除旧服务并应用'); }
       return upsert(settings, {...entry, ...preservedFields(value, old)});
     },
-    remove: (alias: string) => { assertIdle(); assertHttp(alias); return remove(settings, alias); },
+    async remove(alias: string) {
+      assertIdle(); assertHttp(alias);
+      await hydrate(settings);
+      return remove(settings, alias);
+    },
     async recover() {
       if (active || !existsSync(publishedFile)) { return; }
       active = true;
@@ -140,6 +146,7 @@ export function serviceRegistry(settings: PortalSettings, socket: string) {
         writeFileSync(statusFile, JSON.stringify({at: Date.now(), state: state === 'failed' ? 'failed' : 'running', steps}), {mode: 0o600});
       }
       try {
+        await hydrate(settings);
         record('准备发布', 'running');
         // 注册表里同时有 182 内网（localmesh）与外部入口的登记，本服务只发布自己的那部分。
         const aliases = await Promise.all(readAliases(settings).filter(item => rendersOn(item, 'home-edge')).map(resolve));

@@ -1,7 +1,8 @@
 import {build} from 'esbuild';
 import {readFile,chmod,cp,mkdir} from 'node:fs/promises';
 const {version}=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));
-await build({entryPoints:['src/cli.ts'],bundle:true,platform:'node',target:'node22',format:'esm',outfile:'dist/cli.mjs',define:{PACKAGE_VERSION:JSON.stringify(version)}});
+const banner={js:"import {createRequire} from 'node:module'; const require = createRequire(import.meta.url);"};
+await build({entryPoints:['src/cli.ts'],bundle:true,platform:'node',target:'node22',format:'esm',outfile:'dist/cli.mjs',define:{PACKAGE_VERSION:JSON.stringify(version)},banner});
 await chmod('dist/cli.mjs',0o755);
 const runtime = {bundle:true,platform:'node',target:'node22',format:'esm',minify:true,legalComments:'none',banner:{js:"import {createRequire} from 'node:module'; const require = createRequire(import.meta.url);"}};
 await build({...runtime,entryPoints:['src/server/main.ts'],outfile:'dist/server.mjs'});

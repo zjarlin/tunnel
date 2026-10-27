@@ -3,7 +3,7 @@ import {existsSync} from 'node:fs';
 import type {Alias, PortalSettings} from '../config/index.js';
 import {loadSettings} from '../config/index.js';
 import {gatewayAdapter} from './gateway.js';
-import {aliasFqdn, remove, upsert, readAliases, snapshot} from './registry.js';
+import {aliasFqdn, hydrate, readAliases, remove, snapshot, source, upsert} from './registry.js';
 import {render, reloadResolver, validateCaddy, reloadCaddy} from './render.js';
 import {reconcile, formatReport} from './reconcile.js';
 
@@ -17,8 +17,9 @@ const parsePort = (value: string) => {
 
 const settings = (home?: string) => loadSettings(home);
 
-export function add(options: {alias: string; host: string; port: string; scheme: string; note?: string; visibility: 'internal' | 'public'; authorizedBy?: string; home?: string}): string {
+export async function add(options: {alias: string; host: string; port: string; scheme: string; note?: string; visibility: 'internal' | 'public'; authorizedBy?: string; home?: string}): Promise<string> {
   const s = settings(options.home);
+  await hydrate(s);
   if (!isAlias(options.alias)) throw new Error('别名只能使用小写字母、数字和连字符');
   if (!isHost(options.host)) throw new Error('目标主机不合法');
   if (options.scheme !== 'http' && options.scheme !== 'https') throw new Error('协议只能是 http 或 https');
@@ -33,7 +34,7 @@ export function add(options: {alias: string; host: string; port: string; scheme:
     authorizedBy: options.authorizedBy,
     note: options.note ?? '',
   };
-  const registry = upsert(s, entry);
+  await upsert(s, entry, 'cli');
   const result = render(s);
   return [
     `已登记 ${aliasFqdn(s, entry.alias)} -> ${entry.scheme}://${entry.host}:${entry.port}（${entry.visibility}，共 ${result.aliases} 条）`,
@@ -41,17 +42,18 @@ export function add(options: {alias: string; host: string; port: string; scheme:
   ].join('\n');
 }
 
-export function removeAlias(options: {alias: string; home?: string}): string {
+export async function removeAlias(options: {alias: string; home?: string}): Promise<string> {
   const s = settings(options.home);
-  const result = remove(s, options.alias);
+  await hydrate(s);
+  const result = await remove(s, options.alias);
   if (!result.removed) throw new Error(`未找到别名：${options.alias}`);
   const rendered = render(s);
   return [`已删除 ${aliasFqdn(s, options.alias)}（剩余 ${rendered.aliases} 条）`, renderReload(s)].join('\n');
 }
 
-export function list(options: {home?: string}): string {
+export async function list(options: {home?: string}): Promise<string> {
   const s = settings(options.home);
-  const aliases = readAliases(s);
+  const aliases = await hydrate(s);
   if (!aliases.length) return '（空）';
   return aliases
     .map(item => `  ${aliasFqdn(s, item.alias).padEnd(30)} -> ${item.scheme}://${item.host}:${item.port}  ${item.visibility ?? 'internal'}  ${item.note ?? ''}`)
@@ -60,6 +62,7 @@ export function list(options: {home?: string}): string {
 
 export async function sync(options: {home?: string; apply?: boolean}): Promise<string> {
   const s = settings(options.home);
+  await hydrate(s);
   const before = snapshot(s);
   const result = render(s);
   const report = await reconcile(s, {apply: options.apply});
@@ -80,6 +83,7 @@ export async function sync(options: {home?: string; apply?: boolean}): Promise<s
 
 export async function plan(options: {home?: string}): Promise<string> {
   const s = settings(options.home);
+  await hydrate(s);
   return formatReport(await reconcile(s, {apply: false}));
 }
 
@@ -88,15 +92,16 @@ function renderReload(s: PortalSettings): string {
   return reloadResolver(s);
 }
 
-export function doctor(options: {home?: string}): string {
+export async function doctor(options: {home?: string}): Promise<string> {
   const s = settings(options.home);
+  await hydrate(s);
   const resolved = existsSync(s.resolver.configFile!);
   const rendered = existsSync(`${s.portal.aliasesDir}/${s.portal.mapPrefix}.map`);
   const lines = [
     `  域名后缀        ${s.suffix}`,
     `  解析模式        ${s.mode}`,
     `  内网 IP         ${s.lanIp || '（未配置）'}`,
-    `  注册表          ${readAliases(s).length} 条`,
+    `  注册表          ${readAliases(s).length} 条（${source()}）`,
     `  映射片段        ${rendered ? '已生成' : '缺失'}`,
     `  解析配置        ${resolved ? '已生成' : '缺失'}`,
     `  Caddy provider  ${s.providers?.connectivity ?? 'caddy'}  sites=${s.caddy?.sitesDir ?? '（未配置）'}  bind=${s.caddy?.bind ?? '（未配置）'}`,

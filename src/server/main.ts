@@ -67,9 +67,9 @@ const server = createServer(async (request, response) => {
     if (request.method === 'POST' && path === '/api/logout') {
       login.logout(request); response.setHeader('set-cookie', 'tunnel_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); send(200, {ok: true}); return;
     }
-    if (method === 'GET' && path === '/api/services') { send(200, {domain: config.suffix, items: services.list(), status: services.status()}); return; }
-    if (method === 'PUT' && path === '/api/services') { send(200, services.save(await data())); return; }
-    if (method === 'DELETE' && path.startsWith('/api/services/')) { send(200, services.remove(decodeURIComponent(path.slice('/api/services/'.length)))); return; }
+    if (method === 'GET' && path === '/api/services') { send(200, {domain: config.suffix, items: await services.list(), status: services.status()}); return; }
+    if (method === 'PUT' && path === '/api/services') { send(200, await services.save(await data())); return; }
+    if (method === 'DELETE' && path.startsWith('/api/services/')) { send(200, await services.remove(decodeURIComponent(path.slice('/api/services/'.length)))); return; }
     if (method === 'GET' && path === '/api/devices') { send(200, {items: await services.devices.list()}); return; }
     if (method === 'PUT' && path === '/api/devices') { send(200, await services.devices.bind(await data())); return; }
     if (method === 'GET' && path === '/api/accounts') { send(200, {items: services.accounts.list()}); return; }
@@ -78,7 +78,7 @@ const server = createServer(async (request, response) => {
       // AIO 侧车只能回 JSON，导出限定在独立控制台；口令默认不导出，必须显式 secrets=1。
       if (aio) { send(400, {error: '请在独立控制台执行导出'}); return; }
       const secrets = new URL(request.url ?? '/', 'http://localhost').searchParams.get('secrets') === '1';
-      const items = services.list();
+      const items = await services.list();
       const entries = secrets ? book.dump() : book.list();
       const exportedAt = localTime();
       const sheet = (secrets ? '密码本-含明文' : '密码本') + `-${exportedAt.slice(0, 10)}`;
