@@ -50,6 +50,10 @@ export async function publish(settings: PortalSettings, aliases: Alias[], endpoi
   const listener = process.env.TUNNEL_CADDY_LISTENER;
   const expected = Number(process.env.TUNNEL_CADDY_INSTANCES || 1);
   const seen = new Set<string>();
+  // 「实例数」用来兼容多个 Caddy 同时服务控制台域名的情况；但实际实例数可能少于配置值
+  // （例如 :80 的跳转 server 被其他系统重整掉）。这里额外用「连续两轮配置完全相同」判定
+  // 已经处理完当前所有实例，避免配置收敛后仍空转到 24 轮然后误报并发冲突。
+  let stable: string | undefined;
   for (let attempt = 0; attempt < 24; attempt += 1) {
     const agent = new Agent({keepAlive: true, maxSockets: 1});
     try {
@@ -58,7 +62,11 @@ export async function publish(settings: PortalSettings, aliases: Alias[], endpoi
       const servers = Object.entries(config.apps.http.servers).filter(([,value]) => (!listener || listener === '*' || value.listen?.includes(listener)) && JSON.stringify(value.routes).includes(`"${consoleHost}"`));
       if (!servers.length) { continue; }
       const identity = JSON.stringify(servers.map(([name,value]) => [name,value.listen]));
-      if (seen.has(identity)) { continue; }
+      if (seen.has(identity)) {
+        // 两轮读到的实例集合一致：当前配置里已没有未处理的实例，可以收工。
+        if (stable === identity) { return; }
+        continue;
+      }
       let changed = false;
       for (const [serverName,server] of servers) {
         const id = `tunnel-services-${serverName}`;
@@ -116,9 +124,10 @@ export async function publish(settings: PortalSettings, aliases: Alias[], endpoi
         await caddyRequest(endpoint, '/config/', 'POST', config, agent, undefined, {'if-match': metadata.etag});
       }
       seen.add(identity);
+      stable = identity;
       if (seen.size >= expected) { return; }
     } catch (error) {
-      if (error instanceof Error && error.message.startsWith('Caddy HTTP 412')) { continue; }
+      if (error instanceof Error && error.message.startsWith('Caddy HTTP 412')) { stable = undefined; continue; }
       throw error;
     } finally { agent.destroy(); }
   }
