@@ -17,7 +17,7 @@ export interface PanelCaps {
   dnsMode: boolean;
   /** 发布状态列（已应用 / 待应用）。 */
   status: boolean;
-  /** 配对设备弹窗（EasyTier 地址）。 */
+  /** 配对设备弹窗（中继地址与发布节点）。 */
   devices: boolean;
   /** DNS 账号弹窗。 */
   accounts: boolean;
@@ -25,7 +25,7 @@ export interface PanelCaps {
   consolidation: boolean;
   /** 备注列（独立控制台有，AIO 表格没有这一列）。 */
   note: boolean;
-  /** 「连接方式」里的设备隧道选项：AIO 有设备代理，独立站没有。 */
+  /** AIO 有设备代理，工具栏多一个「登记设备隧道」入口；独立站没有。 */
   deviceTunnel: boolean;
 }
 
@@ -34,7 +34,7 @@ export interface PanelHost {
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   /** 数据变化后让壳重新读取并回灌 `load`。 */
   refresh(): Promise<void>;
-  /** 「登记服务」在 AIO 里要先选是设备隧道还是域名入口；独立站直接开域名弹窗。 */
+  /** 登记设备隧道：只在 caps.deviceTunnel 时由工具栏调用，壳负责开自己的弹窗。 */
   onRegister(): void;
   /** 危险操作统一走壳的确认弹窗（AIO 是 dialog，独立站是 confirm）。 */
   confirm(text: string, label: string, run: () => Promise<unknown>): void;
@@ -71,7 +71,7 @@ function markup(): string {
   return `
 <p id="domain-status" role="status" aria-live="polite"></p>
 <dialog id="domain-editor"><form id="domain-form"><h2>登记服务</h2>
-<div class="field"><div class="field-label">连接方式<details class="hint" id="transport-hint"><summary aria-label="为什么 EasyTier 和直连是同一个选项">?</summary><p class="hint-body">EasyTier 给设备分配的是一个点对点地址，设备加入后访问它和访问本机、子网地址没有区别，所以两者合并成一个选项。<br>选设备、目标留空 → 连设备本机；选设备、填地址 → 连经 EasyTier 路由到的子网地址；不选设备 → 连入口本机直接可达的地址。</p></details></div><select name="transport" aria-label="连接方式"><option value="easytier">EasyTier / 直连</option><option value="frp">FRP 映射</option></select></div>
+<div class="field"><div class="field-label">目标怎么填<details class="hint" id="transport-hint"><summary aria-label="目标主机怎么填">?</summary><p class="hint-body">选设备、目标留空 → 服务就跑在这台设备上；选设备、填地址 → 服务在设备能访问到的另一个地址上；不选设备 → 服务在入口本机或任意可达地址上。</p></details></div><select name="transport" aria-hidden="true" hidden><option value="easytier">设备中继</option><option value="frp">FRP 映射（遗留）</option></select></div>
 <label>设备<select name="deviceId"></select></label>
 <div class="field-grid"><label>域名别名<input name="alias" pattern="[a-z0-9][a-z0-9-]{0,62}" required></label><label>域名后缀<input name="domain" placeholder="example.test" required></label></div>
 <label>DNS 账号<select name="accountId"></select></label>
@@ -108,9 +108,6 @@ export class ServicePanel {
     document.body.append(...dialogs);
     (options.mount ?? document.body).append(...inline);
     this.form = el<HTMLFormElement>('domain-form');
-    if (this.caps.deviceTunnel) {
-      (field(this.form, 'transport') as HTMLSelectElement).append(option('device', '设备隧道（当前账号访问）'));
-    }
     this.wire();
   }
 
@@ -137,10 +134,11 @@ export class ServicePanel {
 
   /** 工具栏按钮：壳决定放哪里，按钮集合由能力开关决定。 */
   toolbar(target: HTMLElement): void {
-    // 登记入口统一开域名弹窗；AIO 在弹窗里还能切到「设备隧道」，切换时转交壳。
-    const add = this.button('登记服务', () => this.create());
+    // 两种登记是两条链路，界面上分成两个按钮，不靠隐藏的下拉切换。
+    const add = this.button(this.caps.deviceTunnel ? '登记域名入口' : '登记服务', () => this.create());
     const apply = this.button('应用配置', () => { void this.publish(); }, 'primary');
     target.append(add);
+    if (this.caps.deviceTunnel) { target.append(this.button('登记设备隧道', () => this.host.onRegister())); }
     if (this.caps.devices) { target.append(this.button('配对设备', () => { void this.devices(); })); }
     if (this.caps.accounts) { target.append(this.button('DNS 账号', () => this.accounts())); }
     if (this.caps.consolidation && this.host.consolidate) {
@@ -195,24 +193,27 @@ export class ServicePanel {
       const row = document.createElement('tr');
       row.className = 'data-table-row';
       row.dataset.service = `domain:${item.alias}`;
-      const values: string[] = [item.alias];
-      if (this.caps.edges) { values.push(this.edgeLabel(item)); }
-      values.push(item.deviceLabel || device?.label || '入口本机');
-      values.push(item.scheme === 'tcp' ? 'TCP' : item.transport === 'frp' ? 'FRP' : 'EasyTier / 直连');
-      values.push(`${item.scheme}://${item.host || device?.address || '设备本机'}:${item.port}`);
-      values.push(address);
-      values.push(item.visibility === 'public' ? '公网' : '仅内网');
-      if (this.caps.dnsMode) { values.push(item.dnsMode === 'existing' ? '保留现有 DNS' : '自动管理'); }
+      // 逐列构造而不是先拼字符串数组：地址列要放链接，按 index 回填容易和列开关错位。
+      const nodes: HTMLTableCellElement[] = [cell(item.alias)];
+      if (this.caps.edges) { nodes.push(cell(this.edgeLabel(item))); }
+      nodes.push(cell(item.deviceLabel || device?.label || '入口本机'));
+      // 连接方式不对外暴露实现名：用户只关心「经设备中继」还是「入口本机」，FRP 是遗留入口才点名。
+      nodes.push(cell(item.scheme === 'tcp' ? 'TCP' : item.transport === 'frp' ? 'FRP 映射（遗留）' : item.deviceId ? '设备中继' : '—'));
+      nodes.push(cell(`${item.scheme}://${item.host || device?.address || '设备本机'}:${item.port}`));
+      // 连接地址列：HTTP(S) 直接就是链接，点网址即打开；TCP 是 host:port，不是可点地址。
+      nodes.push(item.scheme === 'tcp' ? cell(address) : this.linkCell(address));
+      nodes.push(cell(item.visibility === 'public' ? '公网' : '仅内网'));
+      if (this.caps.dnsMode) { nodes.push(cell(item.dnsMode === 'existing' ? '保留现有 DNS' : '自动管理')); }
       if (this.caps.status) {
-        values.push(item.readOnly ? '现有 TCP 入口' : data.registry.status?.routes?.includes(item.alias) ? '已应用' : '待应用');
+        nodes.push(cell(item.readOnly ? '现有 TCP 入口' : data.registry.status?.routes?.includes(item.alias) ? '已应用' : '待应用'));
       }
-      if (this.caps.note) { values.push(item.note ?? ''); }
-      row.append(...values.map(cell));
+      if (this.caps.note) { nodes.push(cell(item.note ?? '')); }
+      row.append(...nodes);
 
       const actions = document.createElement('td');
       actions.className = 'data-table-cell data-table-align-end actions';
+      // 不再单独给「打开」按钮：地址列点一下就是打开，操作列只留动作。
       actions.append(this.button('复制地址', () => { void this.copy(address); }));
-      if (item.scheme !== 'tcp') { actions.append(this.link('打开', address)); }
       if (!item.readOnly) {
         actions.append(this.button('编辑', () => this.edit(item)));
         actions.append(this.button('删除', () => {
@@ -265,13 +266,8 @@ export class ServicePanel {
   private hintElement(): HTMLDetailsElement | null { return document.getElementById('transport-hint') as HTMLDetailsElement | null; }
   private hint(open: boolean): void { const hint = this.hintElement(); if (hint) { hint.open = open; } }
 
+  /** 目标字段随设备/协议联动；连接方式不再暴露给用户，只有编辑遗留 FRP 条目时才会是 frp。 */
   private connection(): void {
-    if (field(this.form, 'transport').value === 'device') {
-      // 设备隧道由设备代理下发，和域名登记是两条链路：交给壳打开自己的弹窗。
-      el<HTMLDialogElement>('domain-editor').close();
-      this.host.onRegister();
-      return;
-    }
     const frp = field(this.form, 'transport').value === 'frp';
     el('domain-host-label').textContent = frp ? 'FRP 映射地址' : '目标主机 / 子网地址';
     el('domain-port-label').textContent = frp ? 'FRP 映射端口' : '目标端口';
@@ -372,7 +368,7 @@ export class ServicePanel {
         const title = document.createElement('h3');
         title.textContent = `${device.label} · ${device.status === 'online' ? '在线' : '离线'}`;
         const label = document.createElement('label');
-        label.textContent = 'EasyTier 地址';
+        label.textContent = '中继地址（可留空）';
         const address = document.createElement('input');
         address.value = device.address || '';
         label.append(address);
@@ -416,12 +412,17 @@ export class ServicePanel {
     return node;
   }
 
-  private link(label: string, href: string): HTMLAnchorElement {
-    const node = document.createElement('a');
-    node.href = href;
-    node.textContent = label;
-    node.target = '_blank';
-    node.rel = 'noopener noreferrer';
+  /** 连接地址单元格：整格就是可点链接，点网址直接打开。 */
+  private linkCell(href: string): HTMLTableCellElement {
+    const node = document.createElement('td');
+    node.className = 'data-table-cell';
+    node.title = href;
+    const link = document.createElement('a');
+    link.href = href;
+    link.textContent = href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    node.append(link);
     return node;
   }
 
