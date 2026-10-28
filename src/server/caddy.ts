@@ -45,8 +45,28 @@ export function routes(settings: PortalSettings, aliases: Alias[]): unknown[] {
   });
 }
 
+/**
+ * 定位「该由哪个 Caddy server 承载服务路由」。
+ *
+ * 以前靠控制台自己的域名出现在路由里来认这个 server；控制台下线后这个线索不存在了，
+ * 因此改为显式声明 `TUNNEL_CADDY_HOSTS`（该实例上的既有站点名）。控制台域名和已接管的
+ * `tunnel-services` 路由仍作为回落线索，保证老部署和尚未填写新变量时行为不变。
+ */
+export function locate(settings: PortalSettings, aliases: Alias[], config: CaddyConfig, listener?: string): Array<[string, {listen?: string[]; routes?: Array<Record<string, unknown>>; tls_connection_policies?: Array<Record<string, unknown>>}]> {
+  const explicit = (process.env.TUNNEL_CADDY_HOSTS ?? '').split(',').map(value => value.trim()).filter(Boolean);
+  const consoleHost = process.env.TUNNEL_PUBLIC_URL ? new URL(process.env.TUNNEL_PUBLIC_URL).hostname : '';
+  // 线索按优先级排列：显式声明 > 已接管路由 > 控制台域名。任一条命中即认定该 server 归本服务管理。
+  const clues = ['"@id":"tunnel-services', ...explicit.map(item => JSON.stringify(item)), ...(consoleHost ? [JSON.stringify(consoleHost)] : [])];
+  return Object.entries(config.apps.http.servers).filter(([, value]) => {
+    if (listener && listener !== '*' && !value.listen?.includes(listener)) { return false; }
+    const text = JSON.stringify(value.routes ?? []);
+    if (!clues.some(clue => text.includes(clue))) { return false; }
+    // 已接管的 server 即使别名清空也要继续认领，否则最后一条登记删不掉旧路由。
+    return true;
+  });
+}
+
 export async function publish(settings: PortalSettings, aliases: Alias[], endpoint: string, certificates: Certificate[] = []): Promise<void> {
-  const consoleHost = new URL(process.env.TUNNEL_PUBLIC_URL ?? 'http://localhost').hostname;
   const listener = process.env.TUNNEL_CADDY_LISTENER;
   const expected = Number(process.env.TUNNEL_CADDY_INSTANCES || 1);
   const seen = new Set<string>();
@@ -59,7 +79,7 @@ export async function publish(settings: PortalSettings, aliases: Alias[], endpoi
     try {
       const metadata: {etag?: string} = {};
       const config = await caddyRequest(endpoint, '/config/', 'GET', undefined, agent, metadata) as CaddyConfig;
-      const servers = Object.entries(config.apps.http.servers).filter(([,value]) => (!listener || listener === '*' || value.listen?.includes(listener)) && JSON.stringify(value.routes).includes(`"${consoleHost}"`));
+      const servers = locate(settings, aliases, config, listener);
       if (!servers.length) { continue; }
       const identity = JSON.stringify(servers.map(([name,value]) => [name,value.listen]));
       if (seen.has(identity)) {
