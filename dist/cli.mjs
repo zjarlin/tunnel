@@ -1219,7 +1219,7 @@ var require_utils2 = __commonJS({
     var nodeCrypto = __require("crypto");
     module.exports = {
       postgresMd5PasswordHash,
-      randomBytes,
+      randomBytes: randomBytes2,
       deriveKey,
       sha256,
       hashByName,
@@ -1229,7 +1229,7 @@ var require_utils2 = __commonJS({
     var webCrypto = nodeCrypto.webcrypto || globalThis.crypto;
     var subtleCrypto = webCrypto.subtle;
     var textEncoder = new TextEncoder();
-    function randomBytes(length) {
+    function randomBytes2(length) {
       return webCrypto.getRandomValues(Buffer.alloc(length));
     }
     async function md5(string) {
@@ -1246,11 +1246,11 @@ var require_utils2 = __commonJS({
       const outer = await md5(Buffer.concat([Buffer.from(inner), salt]));
       return "md5" + outer;
     }
-    async function sha256(text) {
-      return await subtleCrypto.digest("SHA-256", text);
+    async function sha256(text2) {
+      return await subtleCrypto.digest("SHA-256", text2);
     }
-    async function hashByName(hashName, text) {
-      return await subtleCrypto.digest(hashName, text);
+    async function hashByName(hashName, text2) {
+      return await subtleCrypto.digest(hashName, text2);
     }
     async function hmacSha256(keyBuffer, msg) {
       const key = await subtleCrypto.importKey("raw", keyBuffer, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -1471,21 +1471,21 @@ var require_sasl = __commonJS({
         throw new Error("SASL: SCRAM-SERVER-FINAL-MESSAGE: server signature does not match");
       }
     }
-    function isPrintableChars(text) {
-      if (typeof text !== "string") {
+    function isPrintableChars(text2) {
+      if (typeof text2 !== "string") {
         throw new TypeError("SASL: text must be a string");
       }
-      return text.split("").map((_, i) => text.charCodeAt(i)).every((c) => c >= 33 && c <= 43 || c >= 45 && c <= 126);
+      return text2.split("").map((_, i) => text2.charCodeAt(i)).every((c) => c >= 33 && c <= 43 || c >= 45 && c <= 126);
     }
-    function isBase64(text) {
-      return /^(?:[a-zA-Z0-9+/]{4})*(?:[a-zA-Z0-9+/]{2}==|[a-zA-Z0-9+/]{3}=)?$/.test(text);
+    function isBase64(text2) {
+      return /^(?:[a-zA-Z0-9+/]{4})*(?:[a-zA-Z0-9+/]{2}==|[a-zA-Z0-9+/]{3}=)?$/.test(text2);
     }
-    function parseAttributePairs(text) {
-      if (typeof text !== "string") {
+    function parseAttributePairs(text2) {
+      if (typeof text2 !== "string") {
         throw new TypeError("SASL: attribute pairs text must be a string");
       }
       return new Map(
-        text.split(",").map((attrValue) => {
+        text2.split(",").map((attrValue) => {
           if (!/^.=/.test(attrValue)) {
             throw new Error("SASL: Invalid attribute pair entry");
           }
@@ -2367,9 +2367,9 @@ var require_messages = __commonJS({
     };
     exports.ReadyForQueryMessage = ReadyForQueryMessage;
     var CommandCompleteMessage = class {
-      constructor(length, text) {
+      constructor(length, text2) {
         this.length = length;
-        this.text = text;
+        this.text = text2;
         this.name = "commandComplete";
       }
     };
@@ -2550,8 +2550,8 @@ var require_serializer = __commonJS({
         /* code.startup */
       );
     };
-    var query = (text) => {
-      return writer.addCString(text).flush(
+    var query = (text2) => {
+      return writer.addCString(text2).flush(
         81
         /* code.query */
       );
@@ -2668,8 +2668,8 @@ var require_serializer = __commonJS({
       return msg.name ? cstringMessage(68, `${msg.type}${msg.name || ""}`) : msg.type === "P" ? emptyDescribePortal : emptyDescribeStatement;
     };
     var close = (msg) => {
-      const text = `${msg.type}${msg.name || ""}`;
-      return cstringMessage(67, text);
+      const text2 = `${msg.type}${msg.name || ""}`;
+      return cstringMessage(67, text2);
     };
     var copyData = (chunk) => {
       return writer.add(chunk).flush(
@@ -2941,8 +2941,8 @@ var require_parser = __commonJS({
       return new messages_1.ReadyForQueryMessage(LATEINIT_LENGTH, status);
     };
     var parseCommandCompleteMessage = (reader) => {
-      const text = reader.cstring();
-      return new messages_1.CommandCompleteMessage(LATEINIT_LENGTH, text);
+      const text2 = reader.cstring();
+      return new messages_1.CommandCompleteMessage(LATEINIT_LENGTH, text2);
     };
     var parseCopyData = (reader, length) => {
       const chunk = reader.bytes(length - 4);
@@ -3329,8 +3329,8 @@ var require_connection = __commonJS({
         }
         return this.stream.write(buffer);
       }
-      query(text) {
-        this._send(serialize.query(text));
+      query(text2) {
+        this._send(serialize.query(text2));
       }
       // send parse message
       parse(query) {
@@ -4725,9 +4725,9 @@ var require_pg_pool = __commonJS({
         this._idle.push(new IdleItem(client, idleListener, tid));
         this._pulseQueue();
       }
-      query(text, values, cb) {
-        if (typeof text === "function") {
-          const response2 = promisify(this.Promise, text);
+      query(text2, values, cb) {
+        if (typeof text2 === "function") {
+          const response2 = promisify(this.Promise, text2);
           setImmediate(function() {
             return response2.callback(new Error("Passing a function as the first parameter to pool.query is not supported"));
           });
@@ -4755,7 +4755,7 @@ var require_pg_pool = __commonJS({
           client.once("error", onError);
           this.log("dispatching query");
           try {
-            client.query(text, values, (err2, res) => {
+            client.query(text2, values, (err2, res) => {
               this.log("query dispatched");
               client.removeListener("error", onError);
               if (clientReleased) {
@@ -5473,11 +5473,11 @@ var Http = class {
       body,
       signal: AbortSignal.timeout(options.timeoutMs ?? 12e3)
     });
-    const text = await response.text();
+    const text2 = await response.text();
     try {
-      return JSON.parse(text);
+      return JSON.parse(text2);
     } catch {
-      throw new Error(`\u7F51\u5173\u8FD4\u56DE\u975E JSON \u54CD\u5E94\uFF08HTTP ${response.status}\uFF09\uFF1A${text.slice(0, 120)}`);
+      throw new Error(`\u7F51\u5173\u8FD4\u56DE\u975E JSON \u54CD\u5E94\uFF08HTTP ${response.status}\uFF09\uFF1A${text2.slice(0, 120)}`);
     }
   }
   /** 先明文登录；部分固件需要 nonce + SHA1 流程。 */
@@ -5671,7 +5671,7 @@ var credential = (settings2, alias) => {
   return config?.credentialsEnv ? process.env[config.credentialsEnv] : void 0;
 };
 var timeout = () => AbortSignal.timeout(15e3);
-var redact = (text) => text.replace(/(token|key|secret)[^&\s"]*[=:]\s*[^&\s"]+/gi, "$1=<redacted>");
+var redact = (text2) => text2.replace(/(token|key|secret)[^&\s"]*[=:]\s*[^&\s"]+/gi, "$1=<redacted>");
 var CloudDnsProvider = class {
   kind = "dns";
   async plan(alias, settings2) {
@@ -5764,9 +5764,9 @@ var CloudDnsProvider = class {
 };
 async function jsonRequest(url, init) {
   const response = await fetch(url, { ...init, signal: timeout() });
-  const text = await response.text();
-  if (!response.ok) throw new Error(`HTTP ${response.status} ${redact(text).slice(0, 500)}`);
-  return text ? JSON.parse(text) : {};
+  const text2 = await response.text();
+  if (!response.ok) throw new Error(`HTTP ${response.status} ${redact(text2).slice(0, 500)}`);
+  return text2 ? JSON.parse(text2) : {};
 }
 var CloudflareDnsProvider = class extends CloudDnsProvider {
   name = "cloudflare";
@@ -5829,10 +5829,10 @@ var DnspodDnsProvider = class extends CloudDnsProvider {
       body,
       signal: timeout()
     });
-    const text = await response.text();
-    if (!response.ok) throw new Error(`HTTP ${response.status} ${redact(text).slice(0, 500)}`);
-    const data = JSON.parse(text);
-    if (data.status?.code !== "1") throw new Error(`DNSPod: ${data.status?.code ?? "?"} ${data.status?.message ?? text}`);
+    const text2 = await response.text();
+    if (!response.ok) throw new Error(`HTTP ${response.status} ${redact(text2).slice(0, 500)}`);
+    const data = JSON.parse(text2);
+    if (data.status?.code !== "1") throw new Error(`DNSPod: ${data.status?.code ?? "?"} ${data.status?.message ?? text2}`);
     return data;
   }
   split(zone, name) {
@@ -6116,8 +6116,8 @@ function cleanGenerated(dir, prefix) {
   for (const name of readdirSync(dir)) {
     if (!name.startsWith(prefix) || !name.endsWith(".caddy")) continue;
     const path = join2(dir, name);
-    const text = readFileSync3(path, "utf8");
-    if (text.startsWith("# generated by aio-plugin-portal")) {
+    const text2 = readFileSync3(path, "utf8");
+    if (text2.startsWith("# generated by aio-plugin-portal")) {
       rmSync(path);
       removed.push(path);
     }
@@ -6388,6 +6388,118 @@ async function warden(options) {
   return [head, `\u5DF2\u628A\u7F51\u5173\u4E0A\u6E38 DNS \u8BBE\u4E3A ${s.lanIp}\uFF08\u515C\u5E95 ${s.gateway.fallbackDns}\uFF09\u3002\u5C40\u57DF\u7F51\u8BBE\u5907\u65E0\u9700\u4EFB\u4F55\u8BBE\u7F6E\u5373\u81EA\u52A8\u8D70\u5185\u7F51\u3002`].join("\n");
 }
 
+// src/server/vault.ts
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { existsSync as existsSync5, readFileSync as readFileSync4, renameSync as renameSync2, writeFileSync as writeFileSync3 } from "node:fs";
+var AAD = Buffer.from("vault.v1");
+var MAX_ENTRIES = 500;
+var text = (value, limit, label, required2 = false) => {
+  const result = String(value ?? "").trim();
+  if (required2 && !result) {
+    throw new Error(`\u8BF7\u586B\u5199${label}`);
+  }
+  if (result.length > limit) {
+    throw new Error(`${label}\u8D85\u8FC7 ${limit} \u4E2A\u5B57\u7B26`);
+  }
+  return result;
+};
+function vault(root) {
+  const file = `${root}/vault.enc`;
+  function key() {
+    const value = Buffer.from(process.env.TUNNEL_SECRET_KEY ?? "", "base64");
+    if (value.length !== 32) {
+      throw new Error("TUNNEL_SECRET_KEY \u5FC5\u987B\u662F 32 \u5B57\u8282 base64 \u5BC6\u94A5");
+    }
+    return value;
+  }
+  function all() {
+    if (!existsSync5(file)) {
+      return [];
+    }
+    const data = readFileSync4(file);
+    const decipher = createDecipheriv("aes-256-gcm", key(), data.subarray(0, 12));
+    decipher.setAAD(AAD);
+    decipher.setAuthTag(data.subarray(12, 28));
+    const parsed = JSON.parse(Buffer.concat([decipher.update(data.subarray(28)), decipher.final()]).toString());
+    return Array.isArray(parsed.entries) ? parsed.entries : [];
+  }
+  function save(entries) {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", key(), iv);
+    cipher.setAAD(AAD);
+    const sealed = Buffer.concat([cipher.update(Buffer.from(JSON.stringify({ version: 1, entries }))), cipher.final()]);
+    writeFileSync3(`${file}.tmp`, Buffer.concat([iv, cipher.getAuthTag(), sealed]), { mode: 384 });
+    renameSync2(`${file}.tmp`, file);
+  }
+  const mask = (entry) => {
+    const { password, ...rest } = entry;
+    return { ...rest, hasPassword: password.length > 0, passwordLength: password.length };
+  };
+  return {
+    list: () => all().map(mask).sort((left, right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name)),
+    reveal(id) {
+      const entry = all().find((item) => item.id === id);
+      if (!entry) {
+        throw new Error("\u5BC6\u7801\u672C\u6761\u76EE\u4E0D\u5B58\u5728");
+      }
+      if (!entry.password) {
+        throw new Error("\u8BE5\u6761\u76EE\u8FD8\u6CA1\u6709\u4FDD\u5B58\u5BC6\u7801");
+      }
+      return { id: entry.id, name: entry.name, username: entry.username, password: entry.password };
+    },
+    save(value) {
+      const current = all();
+      const id = text(value.id, 64, "\u6761\u76EE ID") || randomBytes(8).toString("hex");
+      const old = current.find((item) => item.id === id);
+      if (!old && current.length >= MAX_ENTRIES) {
+        throw new Error(`\u6700\u591A\u767B\u8BB0 ${MAX_ENTRIES} \u6761`);
+      }
+      const password = typeof value.password === "string" ? value.password : "";
+      const entry = {
+        id,
+        name: text(value.name, 80, "\u540D\u79F0", true),
+        category: text(value.category, 32, "\u5206\u7C7B") || "\u5176\u4ED6",
+        url: text(value.url, 512, "\u5730\u5740"),
+        username: text(value.username, 256, "\u8D26\u53F7"),
+        // 留空表示沿用旧口令：编辑其他字段不需要重新输入密码。
+        password: password ? text(password, 1024, "\u5BC6\u7801") : old?.password ?? "",
+        note: text(value.note, 500, "\u5907\u6CE8"),
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      if (!entry.password) {
+        throw new Error("\u8BF7\u586B\u5199\u5BC6\u7801");
+      }
+      const next = [...current.filter((item) => item.id !== id), entry];
+      save(next);
+      return mask(entry);
+    },
+    remove(id) {
+      const current = all();
+      if (!current.some((item) => item.id === id)) {
+        throw new Error("\u5BC6\u7801\u672C\u6761\u76EE\u4E0D\u5B58\u5728");
+      }
+      save(current.filter((item) => item.id !== id));
+      return { id };
+    },
+    // 供 AIO 侧车与 CLI 复用：仅在服务端进程内可用，不经过 HTTP。
+    get: (id) => all().find((item) => item.id === id),
+    /**
+     * 仅供服务端导出使用：返回含明文口令的全部条目。
+     * 绝不直接挂到 HTTP 列表接口上，调用方必须自行决定是否落在响应体里。
+     */
+    dump: () => all().sort((left, right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name))
+  };
+}
+
+// src/server/settings.ts
+function required(name) {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+  return value;
+}
+
 // src/cli.ts
 var USAGE = `aio-plugin-portal <\u547D\u4EE4> [\u9009\u9879]
 
@@ -6401,6 +6513,10 @@ var USAGE = `aio-plugin-portal <\u547D\u4EE4> [\u9009\u9879]
   sync [--apply]
   doctor
   warden [--password <\u7F51\u5173\u5BC6\u7801>] [--apply] [--restore]
+  secret list | reveal <\u6761\u76EEID> | add --name <\u540D\u79F0> --password <\u53E3\u4EE4> [--category <\u5206\u7C7B>] [--username <\u8D26\u53F7>] [--url <\u5730\u5740>] [--note <\u5907\u6CE8>] | remove <\u6761\u76EEID>
+
+  \u5BC6\u7801\u672C\uFF08secret\uFF09\u76F4\u8FDE\u90E8\u7F72\u6570\u636E\u76EE\u5F55\u8BFB\u53D6\uFF0C\u4E0D\u7ECF\u8FC7\u63A7\u5236\u53F0\uFF1B\u63A7\u5236\u53F0\u4E0B\u7EBF\u540E\u4ECD\u53EF\u7528\u3002
+  \u9700\u8981 TUNNEL_DATA \u4E0E TUNNEL_SECRET_KEY\uFF0C\u901A\u5E38\u6765\u81EA\u90E8\u7F72 .env\u3002
 
 \u901A\u7528\u9009\u9879:
   --home <\u76EE\u5F55>    \u95E8\u6237\u914D\u7F6E\u6839\u76EE\u5F55\uFF08\u9ED8\u8BA4 AIO_PORTAL_HOME \u6216 ~/.config/aio-portal\uFF09
@@ -6423,7 +6539,11 @@ async function main() {
       home: { type: "string" },
       password: { type: "string" },
       apply: { type: "boolean", default: false },
-      restore: { type: "boolean", default: false }
+      restore: { type: "boolean", default: false },
+      name: { type: "string" },
+      username: { type: "string" },
+      url: { type: "string" },
+      category: { type: "string" }
     }
   });
   const [command, argument] = positionals;
@@ -6465,6 +6585,41 @@ async function main() {
     case "warden":
       console.log(await warden({ password: values.password, apply: values.apply, restore: values.restore, home: values.home }));
       return;
+    case "secret": {
+      const book = vault(required("TUNNEL_DATA"));
+      if (argument === "list") {
+        const items = book.list();
+        if (!items.length) {
+          console.log("\u5BC6\u7801\u672C\u4E3A\u7A7A");
+          return;
+        }
+        for (const item of items) {
+          console.log(`${item.id}  ${item.category}  ${item.name}${item.username ? `  ${item.username}` : ""}${item.url ? `  ${item.url}` : ""}`);
+        }
+        return;
+      }
+      if (argument === "reveal") {
+        const id = positionals[2];
+        if (!id) throw new Error("reveal \u9700\u8981\u6761\u76EE ID");
+        const item = book.reveal(id);
+        console.log(item.password);
+        return;
+      }
+      if (argument === "add") {
+        if (!values.name) throw new Error("add \u9700\u8981 --name");
+        if (!values.password) throw new Error("add \u9700\u8981 --password");
+        const saved = book.save({ name: values.name, password: values.password, category: values.category, username: values.username, url: values.url, note: values.note });
+        console.log(`\u5DF2\u4FDD\u5B58 ${saved.id}  ${saved.name}`);
+        return;
+      }
+      if (argument === "remove") {
+        const id = positionals[2];
+        if (!id) throw new Error("remove \u9700\u8981\u6761\u76EE ID");
+        console.log(`\u5DF2\u5220\u9664 ${book.remove(id).id}`);
+        return;
+      }
+      throw new Error(`\u672A\u77E5 secret \u5B50\u547D\u4EE4\uFF1A${argument}\uFF08\u53EF\u7528 list / reveal / add / remove\uFF09`);
+    }
     default:
       throw new Error(`\u672A\u77E5\u547D\u4EE4\uFF1A${command}
 

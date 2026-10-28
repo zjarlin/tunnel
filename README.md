@@ -1,8 +1,17 @@
+> **已归档（2026-10-28）**：`tunnel.addzero.site` 控制台已下线，业务逻辑已并入
+> [`aio-plugin-portal`](https://github.com/org-aio/aio-plugin-portal)：
+>
+> - 发布面（Caddy 注入 + ACME 证书 + 云 DNS）：`aio-plugin-portal expose <config|status|accounts|inspect|apply|speed|recover>`
+> - 密码本：`aio-plugin-portal secrets <list|reveal|add|remove>`（密文格式与密钥沿用，历史 `vault.enc` 直接可读）
+>
+> 设备配对/入口登记在 AIO 插件体系（`aio-plugin-device` + `aio-plugin-portal`），本仓库只作历史参考：
+> 不再部署、不再新增功能。182 上的容器已 `docker compose down`，`data/` 与 `certificates/` 保留作回滚。
+
 # Tunnel
 
 服务入口控制台。用户视角只有三步：**配对设备 → 填内网地址 → 选 DNS 服务商**，再由一台**发布节点**（VPS / 中继出口）把服务公开到公网。实现上复用 Caddy、ACME 与现有中继网络，但这些不出现在界面里：界面只出现「配对设备」「中继地址」「发布出口」「访问范围」。AIO 可通过 sidecar 接入同一个 API；独立控制台可单独运行；启用配对设备列表时只读接入 AIO 的共享 PostgreSQL。
 
-本项目从 [aio-plugin-portal](https://github.com/org-aio/aio-plugin-portal) 保留 Git 历史演进而来。DNS provider 与 CLI 代码在这里继续维护；AIO 适配只承担身份校验和 API 转发。
+本项目从 [aio-plugin-portal](https://github.com/org-aio/aio-plugin-portal) 保留 Git 历史演进而来。**归档后** DNS provider、发布逻辑与密码本代码都由 `aio-plugin-portal` 维护，本仓库不再演进。
 
 ## Docker Compose
 
